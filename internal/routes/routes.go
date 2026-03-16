@@ -240,6 +240,7 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/destroy", state.vmDestroy())
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/claim", state.vmClaim())
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/clone", state.vmClone())
+	router.Get("/api/hosts/{host_id}/vms/{libvirt_uuid}/vnc", state.vncProxy())
 
 	router.Post("/api/vms", state.createVM())
 

@@ -1,0 +1,35 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "KUI (KVM User Interface)",
+    "description": "Web-based KVM User Interface for users who prefer a UI over CLI. Connects to libvirt hosts for VM lifecycle, provisioning, and monitoring.",
+    "created": "2026-03-11"
+  },
+  "settings": {
+    "defaultFeaturePrefix": "feat-",
+    "autoNumberFeatures": false,
+    "requireReviews": true,
+    "collaborationMode": true,
+    "defaultWorkflow": "brief",
+    "planningTimeLimit": 30,
+    "templates": {
+      "brief": ".sdd/templates/feature-brief-v2.md",
+      "spec": ".sdd/templates/spec-compact.md",
+      "plan": ".sdd/templates/plan-compact.md",
+      "tasks": ".sdd/templates/tasks-compact.md",
+      "research": ".sdd/templates/research-compact.md",
+      "todo": ".sdd/templates/todo-compact.md"
+    }
+  },
+  "directories": {
+    "specs": "specs",
+    "active": "specs/active",
+    "completed": "specs/done",
+    "backlog": "specs/backlog"
+  },
+  "workflow": {
+    "phases": ["specify", "plan", "tasks", "implement", "review", "complete"],
+    "requiredFiles": ["spec.md", "plan.md", "tasks.md"],
+    "optionalFiles": ["progress.md", "reviews.md", "notes.md"]
+  }
+}

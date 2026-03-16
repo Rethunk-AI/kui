@@ -4,14 +4,14 @@
 
 ---
 
-## Verified Current State
+## Verified Current State (2026-03-16)
 
 | Check | Status |
 |-------|--------|
 | Build | pass |
 | Test | pass |
 | Vet | pass |
-| Spec integrity | pass |
+| Spec integrity | pass (links fixed: schema-storage, spec-frontend-build) |
 | Doc integrity | pass |
 
 ### Active Specs (6)
@@ -120,6 +120,8 @@ spec-libvirt-connector (T4) ─┘
 ```
 
 ## Latest Work
+
+**2026-03-16:** Spec integrity fix. Resolved broken links in spec-template-management (schema-storage → `../../done/schema-storage/spec.md`) and spec-application-bootstrap (spec-frontend-build → `../../active/spec-frontend-build/spec.md`). Verifier now passes.
 
 **2026-03-16:** spec-audit-integration T7 complete. Added internal/audit package (RecordEvent, RecordEventWithDiff), wired wizard_complete in setupComplete, wired auth events in login/logout. VM/template audit deferred until those specs land.
 

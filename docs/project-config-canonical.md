@@ -133,11 +133,11 @@ No symlinks — `.vscode/` is shared.
 
 ---
 
-## 6. GitLab Project README (Canonical: `README`)
+## 6. GitLab Project README (Canonical: `README.md`)
 
-**Current:** Root `README` exists.
+**Current:** Root `README.md` exists.
 
-**Option:** Symlink `.gitlab/README.md` → `../README` so GitLab project page shows the same content. GitLab renders `README`, `README.md`, or `.gitlab/README.md`; symlink avoids duplication.
+**Option:** Symlink `.gitlab/README.md` → `../README.md` so GitLab project page shows the same content. GitLab renders `README`, `README.md`, or `.gitlab/README.md`; symlink avoids duplication.
 
 ---
 
@@ -161,7 +161,7 @@ No symlinks — `.vscode/` is shared.
 | Git ignore | `.gitignore` | — |
 | Lint | `.golangci.yml` | — |
 | IDE tasks | `.vscode/tasks.json` | — |
-| Project README | `README` | `.gitlab/README.md` → `../README` (optional) |
+| Project README | `README.md` | `.gitlab/README.md` → `../README.md` (optional) |
 | MR/PR template | `.github/PULL_REQUEST_TEMPLATE.md` | `.gitlab/merge_request_templates/default.md` (already symlinked) |
 
 ---
@@ -193,5 +193,5 @@ Add to `.cursor/rules/workflow.mdc` (or a new `rules/canonical-config.mdc`):
 - [ ] `.golangci.yml`
 - [ ] `.vscode/tasks.json`
 - [ ] `CONTRIBUTING.md`
-- [ ] `.gitlab/README.md` → symlink to `../README` (optional)
+- [ ] `.gitlab/README.md` → symlink to `../README.md` (optional)
 - [ ] Update `.cursor/rules/workflow.mdc` with canonical-config section

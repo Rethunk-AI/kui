@@ -4,6 +4,21 @@
     "makefile.configureOnOpen": false,
     "files.exclude": {
         "**/.claude": true,
-        "**/.codex": true
+        "**/.codex": true,
+        "**/bin": true,
+        "**/coverage.out": true,
+        "**/coverage.html": true
+    },
+    "explorer.compactFolders": true,
+    "explorer.fileNesting.enabled": true,
+    "explorer.fileNesting.expand": false,
+    "explorer.fileNesting.patterns": {
+        "*.go": "${capture}_test.go",
+        "*.md": "${capture}.json"
+    },
+    "search.exclude": {
+        "**/bin": true,
+        "**/coverage.out": true,
+        "**/coverage.html": true
     }
 }

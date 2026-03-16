@@ -1,6 +1,6 @@
 ---
 name: developer
-model: gpt-5.3-codex-spark-preview-low
+model: inherit
 description: Practical, task-focused subagent for scoped implementation. Trigger terms: implement feature, add endpoint, refactor, fix bug, write tests, integrate. Use proactively.
 ---
 

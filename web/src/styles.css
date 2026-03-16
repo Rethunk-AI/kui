@@ -1,0 +1,22 @@
+/* KUI global shell tokens and base layout */
+:root {
+  --kui-font: system-ui, -apple-system, sans-serif;
+  --kui-bg: #1a1a1a;
+  --kui-fg: #e0e0e0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--kui-font);
+  background: var(--kui-bg);
+  color: var(--kui-fg);
+}
+
+#app {
+  min-height: 100vh;
+  padding: 1rem;
+}

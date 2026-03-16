@@ -6,6 +6,15 @@
 import WinBox from "winbox/src/js/winbox.js";
 import "winbox/dist/css/winbox.min.css";
 
-export function openWinBox(title: string, mountNode: HTMLElement): unknown {
-  return new WinBox(title, { mount: mountNode });
+export interface WinBoxOptions {
+  onclose?: (force?: boolean) => boolean | void;
+}
+
+export function openWinBox(
+  title: string,
+  mountNode: HTMLElement,
+  options?: WinBoxOptions
+): unknown {
+  const opts = { mount: mountNode, ...options };
+  return new WinBox(title, opts);
 }

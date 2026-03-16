@@ -87,7 +87,7 @@ export interface VMListProps {
   data: VMsResponse;
   groupBy?: "last_access" | "created_at";
   onRefresh: () => void;
-  onOpenConsole?: (hostId: string, libvirtUuid: string) => void;
+  onOpenConsole?: (vm: VM) => void;
 }
 
 export function renderVMList(
@@ -137,11 +137,11 @@ export function renderVMList(
         const consoleBtn = li.querySelector(".vm-list__btn--console");
         if (consoleBtn && onOpenConsole) {
           consoleBtn.addEventListener("click", () => {
-            onOpenConsole(vm.host_id, vm.libvirt_uuid);
+            onOpenConsole(vm);
           });
         } else if (consoleBtn) {
           (consoleBtn as HTMLButtonElement).disabled = true;
-          (consoleBtn as HTMLButtonElement).title = "Console (T12g)";
+          (consoleBtn as HTMLButtonElement).title = "Console unavailable";
         }
         ul.appendChild(li);
       }

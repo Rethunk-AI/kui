@@ -23,6 +23,7 @@ import {
 import { renderAlertsPanel } from "./components/AlertsPanel";
 import { renderHostSelector } from "./components/HostSelector";
 import { renderVMList } from "./components/VMList";
+import { openConsoleForVM } from "./lib/console";
 
 const appEl = document.getElementById("app");
 if (!appEl) throw new Error("app element missing");
@@ -147,9 +148,7 @@ function renderMain(
       data: vmsResp,
       groupBy: "last_access",
       onRefresh: onDataChange,
-      onOpenConsole: (_hostId, _libvirtUuid) => {
-        // Placeholder for T12g: open Winbox console
-      },
+      onOpenConsole: openConsoleForVM,
     });
     content.appendChild(vmListContainer);
   }

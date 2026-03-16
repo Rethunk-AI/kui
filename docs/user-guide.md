@@ -1,12 +1,12 @@
 # KUI User Guide
 
-How to use the KUI web interface for VM management. For product overview, see [PRD](prd.md).
+How to use the KUI web interface for VM management. Product overview: [PRD](prd.md). Implementation details: [specs](../specs/done/).
 
 ---
 
 ## Login
 
-After setup completes, open KUI in a browser. Enter the admin username and password configured during setup. Sessions use JWT cookies; logout clears the session. See [decision-log §2](prd/decision-log.md) (Auth, Session).
+After setup completes, open KUI in a browser. Enter the admin username and password configured during setup. Sessions use JWT cookies; logout clears the session. See [api-auth spec](../specs/done/api-auth/spec.md).
 
 ---
 
@@ -22,7 +22,7 @@ The main view shows:
 
 ## Host Selector
 
-The header shows the current default host. Use the host selector dropdown to switch hosts. Changes persist to your preferences. The selected host affects VM create, clone, and console operations. See [decision-log §2](prd/decision-log.md) (Default host).
+The header shows the current default host. Use the host selector dropdown to switch hosts. Changes persist to your preferences. The selected host affects VM create, clone, and console operations.
 
 ---
 
@@ -71,7 +71,7 @@ Click **Console** to open a VM console in a window:
 - **VNC (noVNC)** — graphical console; default when available.
 - **Serial (xterm.js)** — text console; used if VNC fails or you set `console_preference` to serial.
 
-Console preference is per-VM; set it via the VM config edit. See [decision-log §2](prd/decision-log.md) (Console protocol).
+Console preference is per-VM; set it via the VM config edit. See [spec-console-realtime](../specs/done/spec-console-realtime/spec.md).
 
 ---
 
@@ -101,13 +101,13 @@ When the VM list is empty and you haven’t dismissed it, a checklist appears:
 - Create VM from pool or disk path
 - Clone an existing VM
 
-Click **Dismiss** to hide it. Dismissal is stored in preferences. See [decision-log §2](prd/decision-log.md) (Empty state, First-run).
+Click **Dismiss** to hide it. Dismissal is stored in preferences. See [spec-ui-deployment](../specs/done/spec-ui-deployment/spec.md).
 
 ---
 
 ## Alerts
 
-Transient alerts (host offline, errors) appear in the alerts panel. They clear on refresh. See [decision-log §2](prd/decision-log.md) (Notifications).
+Transient alerts (host offline, errors) appear in the alerts panel. They clear on refresh. See [spec-console-realtime](../specs/done/spec-console-realtime/spec.md) for event types.
 
 ---
 

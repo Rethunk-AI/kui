@@ -1,4 +1,10 @@
-# Executive Summary
+# KUI Libvirt Research
+
+Research input for [decision-log §1](../prd/decision-log.md). For binding decisions, see the decision-log.
+
+---
+
+## Executive Summary
 
 This report details the use of the official Libvirt Go bindings, `libvirt.org/go/libvirt`, for managing KVM hypervisors. It highlights that this package is a CGo-based wrapper around the native C library, offering comprehensive API coverage. For secure remote management, the report recommends the `qemu+ssh` transport, which leverages standard SSH authentication mechanisms like public keys for secure, password-less access. For development and testing, particularly within Continuous Integration (CI) environments, the Libvirt 'test' driver is presented as an invaluable tool, providing a fast, in-memory mock hypervisor that eliminates the need for a physical KVM setup. Finally, the report provides an overview of available web-based user interfaces, comparing Cockpit as a general-purpose server management tool, WebVirtCloud as a dedicated and feature-rich virtualization platform, and the less actively maintained Kimchi.
 

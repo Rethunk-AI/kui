@@ -142,27 +142,4 @@ kui.example.com {
 
 Caddy automatically handles WebSocket upgrades and long-lived SSE connections. KUI should listen on `127.0.0.1:8080`.
 
-### WebSocket upgrade headers
-
-When a client requests a WebSocket upgrade, the proxy forwards these headers to KUI:
-
-| Header | Purpose |
-|--------|---------|
-| `Upgrade` | `websocket` |
-| `Connection` | `Upgrade` |
-| `Sec-WebSocket-Key` | Client key for handshake |
-| `Sec-WebSocket-Version` | Protocol version (typically `13`) |
-| `Sec-WebSocket-Extensions` | Optional extensions |
-
-nginx: `proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade";`  
-Caddy: forwards these automatically.
-
-### SSE requirements
-
-`GET /api/events` returns a stream with:
-
-- `Content-Type: text/event-stream`
-- `Cache-Control: no-cache`
-- `Connection: keep-alive`
-
-The proxy must not buffer the response. nginx: `proxy_buffering off; proxy_cache off;`. Caddy handles this by default.
+**Proxy requirements:** Forward WebSocket upgrade headers (`Upgrade`, `Connection`, etc.) and avoid buffering SSE (`GET /api/events`). See examples above.

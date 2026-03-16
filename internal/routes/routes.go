@@ -91,6 +91,32 @@ type validateHostResponse struct {
 	Error string `json:"error,omitempty"`
 }
 
+type listViewOptions struct {
+	ListView           *listView `json:"list_view,omitempty"`
+	OnboardingDismissed *bool     `json:"onboarding_dismissed,omitempty"`
+}
+
+type listView struct {
+	Sort    string `json:"sort,omitempty"`
+	PageSize int    `json:"page_size,omitempty"`
+	GroupBy string `json:"group_by,omitempty"`
+}
+
+type preferencesResponse struct {
+	DefaultHostID   *string           `json:"default_host_id"`
+	ListViewOptions *listViewOptions  `json:"list_view_options"`
+}
+
+type preferencesPutRequest struct {
+	DefaultHostID   *string           `json:"default_host_id"`
+	ListViewOptions *listViewOptions  `json:"list_view_options"`
+}
+
+type hostResponse struct {
+	ID  string `json:"id"`
+	URI string `json:"uri"`
+}
+
 type setupCompleteRequest struct {
 	Admin struct {
 		Username string `json:"username"`
@@ -184,6 +210,9 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Post("/api/setup/complete", state.setupComplete())
 	router.Post("/api/auth/logout", state.logout())
 	router.Get("/api/auth/me", state.me())
+	router.Get("/api/preferences", state.getPreferences())
+	router.Put("/api/preferences", state.putPreferences())
+	router.Get("/api/hosts", state.getHosts())
 
 	return router
 }
@@ -280,6 +309,148 @@ func (r *routerState) me() http.HandlerFunc {
 			Username: user.Username,
 			Role:     user.Role,
 		})
+	}
+}
+
+func (r *routerState) getPreferences() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		user, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		var defaultHostID sql.NullString
+		var listViewOptionsRaw sql.NullString
+		err := r.db.SQL.QueryRowContext(req.Context(),
+			`SELECT default_host_id, list_view_options FROM preferences WHERE user_id = ?`,
+			user.ID,
+		).Scan(&defaultHostID, &listViewOptionsRaw)
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusOK, preferencesResponse{
+				DefaultHostID:   nil,
+				ListViewOptions: nil,
+			})
+			return
+		}
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to load preferences")
+			return
+		}
+		resp := preferencesResponse{}
+		if defaultHostID.Valid && defaultHostID.String != "" {
+			resp.DefaultHostID = &defaultHostID.String
+		}
+		if listViewOptionsRaw.Valid && listViewOptionsRaw.String != "" {
+			var opts listViewOptions
+			if err := json.Unmarshal([]byte(listViewOptionsRaw.String), &opts); err == nil {
+				resp.ListViewOptions = &opts
+			}
+		}
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+func (r *routerState) putPreferences() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		user, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		var payload preferencesPutRequest
+		if err := decodeJSON(req.Body, &payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		var defaultHostID sql.NullString
+		var listViewOptionsRaw sql.NullString
+		err := r.db.SQL.QueryRowContext(req.Context(),
+			`SELECT default_host_id, list_view_options FROM preferences WHERE user_id = ?`,
+			user.ID,
+		).Scan(&defaultHostID, &listViewOptionsRaw)
+		if err != nil && err != sql.ErrNoRows {
+			writeJSONError(w, http.StatusInternalServerError, "failed to load preferences")
+			return
+		}
+		mergedDefaultHost := defaultHostID.String
+		if payload.DefaultHostID != nil {
+			if strings.TrimSpace(*payload.DefaultHostID) == "" {
+				mergedDefaultHost = ""
+			} else {
+				hostID := strings.TrimSpace(*payload.DefaultHostID)
+				if r.config == nil || !containsHost(r.config.Hosts, hostID) {
+					writeJSONError(w, http.StatusBadRequest, "default_host_id is not configured")
+					return
+				}
+				mergedDefaultHost = hostID
+			}
+		}
+		var mergedOpts listViewOptions
+		if listViewOptionsRaw.Valid && listViewOptionsRaw.String != "" {
+			_ = json.Unmarshal([]byte(listViewOptionsRaw.String), &mergedOpts)
+		}
+		if payload.ListViewOptions != nil {
+			if payload.ListViewOptions.ListView != nil {
+				mergedOpts.ListView = payload.ListViewOptions.ListView
+				if mergedOpts.ListView.GroupBy != "" && mergedOpts.ListView.GroupBy != "last_access" && mergedOpts.ListView.GroupBy != "created_at" {
+					mergedOpts.ListView.GroupBy = "last_access"
+				}
+			}
+			if payload.ListViewOptions.OnboardingDismissed != nil {
+				mergedOpts.OnboardingDismissed = payload.ListViewOptions.OnboardingDismissed
+			}
+		}
+		optsJSON, err := json.Marshal(mergedOpts)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to save preferences")
+			return
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		_, err = r.db.SQL.ExecContext(req.Context(),
+			`INSERT INTO preferences (user_id, default_host_id, list_view_options, updated_at)
+			 VALUES (?, ?, ?, ?)
+			 ON CONFLICT(user_id) DO UPDATE SET
+			   default_host_id = excluded.default_host_id,
+			   list_view_options = excluded.list_view_options,
+			   updated_at = excluded.updated_at`,
+			user.ID, nullIfEmpty(mergedDefaultHost), string(optsJSON), now,
+		)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to save preferences")
+			return
+		}
+		resp := preferencesResponse{}
+		if mergedDefaultHost != "" {
+			resp.DefaultHostID = &mergedDefaultHost
+		}
+		resp.ListViewOptions = &mergedOpts
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+func nullIfEmpty(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func (r *routerState) getHosts() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		_, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if r.config == nil || len(r.config.Hosts) == 0 {
+			writeJSON(w, http.StatusOK, []hostResponse{})
+			return
+		}
+		out := make([]hostResponse, 0, len(r.config.Hosts))
+		for _, h := range r.config.Hosts {
+			out = append(out, hostResponse{ID: h.ID, URI: h.URI})
+		}
+		writeJSON(w, http.StatusOK, out)
 	}
 }
 

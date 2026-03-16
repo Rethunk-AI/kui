@@ -4,134 +4,32 @@
 
 ---
 
-## Verified Current State (2026-03-16)
+## Verified Current State
 
 | Check | Status |
 |-------|--------|
 | Build | pass |
 | Test | pass |
 | Vet | pass |
-| Spec integrity | pass (links fixed: schema-storage, spec-frontend-build) |
+| Spec integrity | pass |
 | Doc integrity | pass |
 
-### Active Specs (0)
+### Specs
 
-All specs verified complete and moved to `specs/done/`.
-
-### Done Specs (10)
-
-| spec_id | status |
-|---------|--------|
-| spec-audit-integration | DONE — wizard, auth, vm_lifecycle, vm_config_change, template_create |
-| spec-console-realtime | DONE — SSE /api/events, noVNC /vnc, xterm serial /serial |
-| spec-frontend-build | DONE — Vite, web/, embed, SPA fallback |
-| spec-ui-deployment | DONE — systemd, TLS docs, checklist, host selector, alerts, VM list, Winbox console |
-| spec-vm-lifecycle-create | DONE — discovery, lifecycle, create/clone/claim, PATCH config |
-| spec-template-management | DONE — list sort, base_image_valid, save flow, API |
-| schema-storage | DONE — SQLite, Git layout, config |
-| spec-libvirt-connector | DONE — Connector, domain/network/storage ops |
-| spec-application-bootstrap | DONE — main, config fallback to setup, middleware, routes |
-| api-auth | DONE — JWT, setup wizard, preferences, hosts |
+All 10 specs complete and in `specs/done/`:
+schema-storage, spec-libvirt-connector, spec-application-bootstrap, api-auth,
+spec-audit-integration, spec-vm-lifecycle-create, spec-frontend-build,
+spec-template-management, spec-console-realtime, spec-ui-deployment.
 
 ---
 
-## Remaining Implementation Tasks
+## Remaining Work
 
-### Foundation (Order 1–2)
-
-| Task ID | Spec | Description | Status |
-|---------|------|-------------|--------|
-| T1 | schema-storage | Scaffold go.mod, internal/config (YAML load, env overrides, validation) | DONE |
-| T2 | schema-storage | Implement internal/db (SQLite, schema §2.2) | DONE |
-| T3 | schema-storage | Implement internal/git (templates + audit layout) | DONE |
-| T4 | spec-libvirt-connector | Implement Connector interface, domain/network/storage ops | DONE |
-
-### Core (Order 3–5)
-
-| Task ID | Spec | Description | Status |
-|---------|------|-------------|--------|
-| T5 | spec-application-bootstrap | cmd/kui/main.go, config load, middleware, routes, startup/shutdown | DONE |
-| T6 | api-auth | Auth service, setup endpoints, JWT middleware, preferences, hosts | DONE |
-| T7 | spec-audit-integration | Audit service, integration points (wizard_complete, auth) | DONE |
-
-### Feature (Order 6+)
-
-| Task ID | Spec | Description | Status |
-|---------|------|-------------|--------|
-| T8a | spec-vm-lifecycle-create | Discovery: GET /api/hosts/{id}/pools, volumes, networks | DONE |
-| T8b | spec-vm-lifecycle-create | GET /api/vms list (flat + orphans) | DONE |
-| T8c | spec-vm-lifecycle-create | VM detail, lifecycle (start/stop/pause/resume/destroy) | DONE |
-| T8d | spec-vm-lifecycle-create | POST /api/vms create, clone, claim | DONE |
-| T8e | spec-vm-lifecycle-create | PATCH config edit, vm_config_change audit | DONE |
+- None. MVP implementation complete.
 
 ---
 
-## Security Audit Findings (2026-03-16) — RESOLVED
+## Security Audit (2026-03-16) — RESOLVED
 
-All findings addressed:
-- **High:** Config chmod 0o600; setup/complete only when config missing + setupCompleted flag
-- **Medium:** validate-host setup-only + sanitized errors; secure cookies config; login rate limit
-- **Low:** jwt_secret required in normal mode
-
-**Additional fixes (router subagent):**
-- validate-host: removed `err` from Debug logs (prevents URI/keyfile leakage)
-- login: removed username from failed-login Warn logs (prevents enumeration)
-- setup idempotency: added `os.Stat(configPath)` check before write (prevents race)
-
----
-
-## Deferred (Planning Required)
-
-- None. All specs have plans.
-
----
-
-## Planner Triggers
-
-When T1–T7 are done: create specs for feature specs if needed (plans exist; no new planning required).
-
----
-
-## Recommended Delegation Order
-
-1. **T1** — schema-storage: go.mod + internal/config
-2. **T2** — schema-storage: internal/db
-3. **T3** — schema-storage: internal/git
-4. **T4** — spec-libvirt-connector: Connector + ops
-5. **T5** — spec-application-bootstrap: main, middleware, routes
-6. **T6** — api-auth
-7. **T7** — spec-audit-integration
-8. **T8a** — spec-vm-lifecycle-create: discovery endpoints ✓
-9. **T8b** — spec-vm-lifecycle-create: GET /api/vms
-10. **T8c** — spec-vm-lifecycle-create: VM detail + lifecycle
-
----
-
-## Critical Path
-
-```
-schema-storage (T1–T3) → spec-application-bootstrap (T5)
-spec-libvirt-connector (T4) ─┘
-```
-
-## Latest Work
-
-**2026-03-16:** Spec verification and promotion. Moved 6 PASS specs from active → done (spec-audit-integration, spec-console-realtime, spec-frontend-build, spec-ui-deployment, spec-vm-lifecycle-create, spec-template-management). Fixed 2 PARTIAL specs via router→developer: (1) spec-template-management — list sort by created_at desc, base_image_valid in response; (2) spec-application-bootstrap — invalid config falls back to setup mode. All 10 specs now in specs/done/.
-
-**2026-03-16:** Spec integrity fix. Resolved broken links in spec-template-management (schema-storage → `../../done/schema-storage/spec.md`) and spec-application-bootstrap (spec-frontend-build → `../spec-frontend-build/spec.md`). Verifier now passes.
-
-**2026-03-16:** spec-audit-integration T7 complete. Added internal/audit package (RecordEvent, RecordEventWithDiff), wired wizard_complete in setupComplete, wired auth events in login/logout. VM/template audit deferred until those specs land.
-
-**2026-03-16:** spec-vm-lifecycle-create T8a started. Added discovery endpoints: GET /api/hosts/{host_id}/pools, GET /api/hosts/{host_id}/pools/{pool_name}/volumes, GET /api/hosts/{host_id}/networks. Per spec §9.3.
-
-**2026-03-16:** spec-vm-lifecycle-create T8b–T8e complete. GET /api/vms (flat+orphans), VM detail+lifecycle (start/stop/pause/resume/destroy), POST create/clone/claim, PATCH config edit with vm_config_change audit.
-
-**2026-03-16:** spec-template-management complete. internal/template package, GET/POST /api/templates (list, save VM as template).
-
-**2026-03-16:** spec-frontend-build complete. Vite scaffold (web/), npm deps (noVNC, xterm, winbox), lib structure (api, console, winbox-adapter). Backend embed (web/embed.go), SPA fallback, KUI_WEB_DIR support. Makefile: `make all` builds web then Go.
-
-**2026-03-16:** spec-console-realtime complete. SSE GET /api/events (broadcaster, vm.state_changed, host.online/offline). noVNC WebSocket proxy GET /api/hosts/{id}/vms/{uuid}/vnc (local only). xterm.js serial proxy GET /api/hosts/{id}/vms/{uuid}/serial (Connector.OpenSerialConsole, local only).
-
-**2026-03-16:** spec-ui-deployment complete. Systemd unit (deploy/systemd/), TLS/reverse-proxy docs (docs/deployment.md). First-run checklist, host selector, alerts panel+toast, VM list (grouped, orphans+claim), Winbox canvas with noVNC/xterm console.
-
-**2026-03-16:** spec-audit-integration complete. vm_lifecycle wired in create, clone, start, stop, pause, resume, destroy. All integration points: wizard_complete, auth, vm_config_change, template_create, vm_lifecycle.
+All findings addressed: config chmod 0o600, setup idempotency, validate-host
+sanitization, secure cookies, login rate limit, jwt_secret required.

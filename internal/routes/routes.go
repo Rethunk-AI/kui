@@ -24,6 +24,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
 
+	"github.com/kui/kui/internal/audit"
 	"github.com/kui/kui/internal/config"
 	"github.com/kui/kui/internal/db"
 	"github.com/kui/kui/internal/libvirtconn"
@@ -246,12 +247,34 @@ func (r *routerState) login(sessionTimeout time.Duration, secret string, secureC
 		if err != nil {
 			loginLimiter.recordFailure(clientIP)
 			r.logger.Warn("login failed", "ip", clientIP)
+			_ = audit.RecordEvent(req.Context(), r.db, audit.Event{
+				EventType:  "auth",
+				EntityType: "auth",
+				EntityID:   "anonymous",
+				UserID:     nil,
+				Payload: map[string]string{
+					"action": "login",
+					"result": "failure",
+					"ip":     clientIP,
+				},
+			})
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
 		if err := bcrypt.CompareHashAndPassword([]byte(record.PasswordHash), []byte(payload.Password)); err != nil {
 			loginLimiter.recordFailure(clientIP)
 			r.logger.Warn("login failed", "ip", clientIP)
+			_ = audit.RecordEvent(req.Context(), r.db, audit.Event{
+				EventType:  "auth",
+				EntityType: "auth",
+				EntityID:   "anonymous",
+				UserID:     nil,
+				Payload: map[string]string{
+					"action": "login",
+					"result": "failure",
+					"ip":     clientIP,
+				},
+			})
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
@@ -275,6 +298,18 @@ func (r *routerState) login(sessionTimeout time.Duration, secret string, secureC
 			MaxAge:   int(sessionTimeout.Seconds()),
 			Expires:  expiresAt,
 		})
+		_ = audit.RecordEvent(req.Context(), r.db, audit.Event{
+			EventType:  "auth",
+			EntityType: "auth",
+			EntityID:   record.ID,
+			UserID:     &record.ID,
+			Payload: map[string]string{
+				"action": "login",
+				"result": "success",
+				"ip":     clientIP,
+				"username": strings.TrimSpace(payload.Username),
+			},
+		})
 		writeJSON(w, http.StatusOK, loginResponse{
 			Token:     token,
 			ExpiresAt: expiresAt.Format(time.RFC3339),
@@ -284,6 +319,20 @@ func (r *routerState) login(sessionTimeout time.Duration, secret string, secureC
 
 func (r *routerState) logout() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
+		user, ok := mw.UserFromContext(req)
+		if ok {
+			_ = audit.RecordEvent(req.Context(), r.db, audit.Event{
+				EventType:  "auth",
+				EntityType: "auth",
+				EntityID:   user.ID,
+				UserID:     &user.ID,
+				Payload: map[string]string{
+					"action": "logout",
+					"result": "success",
+					"ip":     clientIPFromRequest(req),
+				},
+			})
+		}
 		http.SetCookie(w, &http.Cookie{
 			Name:     mw.SessionCookieName,
 			Value:    "",
@@ -293,7 +342,6 @@ func (r *routerState) logout() http.HandlerFunc {
 			MaxAge:   -1,
 		})
 		w.WriteHeader(http.StatusOK)
-		_ = req
 	}
 }
 
@@ -613,6 +661,34 @@ func (r *routerState) setupComplete() http.HandlerFunc {
 		}
 		if err := os.Chmod(r.configPath, 0o600); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "failed to update config permissions")
+			return
+		}
+
+		configYAML, err := yaml.Marshal(persist)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to prepare audit")
+			return
+		}
+		ts := time.Now().UTC().Format(audit.TimestampFormat)
+		diffPath := "audit/wizard/" + ts + ".diff"
+		diffContent := audit.WizardDiff(string(configYAML))
+		ev := audit.Event{
+			EventType:  "wizard_complete",
+			EntityType: "wizard",
+			EntityID:   "latest",
+			UserID:     &userID,
+			Payload: map[string]interface{}{
+				"action":          "wizard_complete",
+				"result":          "success",
+				"admin_username": strings.TrimSpace(payload.Admin.Username),
+				"host_id":         payload.DefaultHost,
+				"config_path":     r.configPath,
+				"git_path":        r.configuredGitPath(),
+			},
+		}
+		if err := audit.RecordEventWithDiff(req.Context(), r.db, r.configuredGitPath(), ev, diffPath, diffContent); err != nil {
+			r.logger.Error("audit wizard_complete failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to record audit")
 			return
 		}
 

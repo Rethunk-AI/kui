@@ -59,7 +59,7 @@ sequenceDiagram
     participant D as SQLite
 
     U->>B: Select host, create VM
-    B->>K: POST /vms (host_id, template_id)
+    B->>K: POST /api/vms (host_id, pool, disk; MVP pool+path)
     K->>D: Audit log
     K->>L: Connect(URI)
     K->>L: DefineDomain(xml)

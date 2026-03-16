@@ -28,6 +28,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/kui/kui/internal/audit"
+	"github.com/kui/kui/internal/broadcaster"
 	"github.com/kui/kui/internal/config"
 	"github.com/kui/kui/internal/db"
 	"github.com/kui/kui/internal/libvirtconn"
@@ -37,13 +38,14 @@ import (
 )
 
 type RouterOptions struct {
-	Logger       *slog.Logger
-	DB           *db.DB
-	Config       *config.Config
-	ConfigPath   string
+	Logger        *slog.Logger
+	DB            *db.DB
+	Config        *config.Config
+	ConfigPath    string
 	ConfigPresent bool
-	DBPath       string
-	GitPath      string
+	DBPath        string
+	GitPath       string
+	Broadcaster   *broadcaster.Broadcaster
 }
 
 type routerState struct {
@@ -54,6 +56,7 @@ type routerState struct {
 	configPresent   bool
 	dbPath          string
 	gitPath         string
+	broadcaster     *broadcaster.Broadcaster
 	setupCompleted  bool
 	setupCompletedMu sync.Mutex
 }
@@ -170,6 +173,10 @@ func NewRouter(opts RouterOptions) http.Handler {
 		logger = slog.Default()
 	}
 
+	bc := opts.Broadcaster
+	if bc == nil {
+		bc = broadcaster.NewBroadcaster()
+	}
 	state := &routerState{
 		logger:         logger,
 		db:             opts.DB,
@@ -178,6 +185,7 @@ func NewRouter(opts RouterOptions) http.Handler {
 		configPresent:  opts.ConfigPresent,
 		dbPath:         opts.DBPath,
 		gitPath:        opts.GitPath,
+		broadcaster:    bc,
 	}
 
 	sessionTimeout := 24 * time.Hour
@@ -237,6 +245,8 @@ func NewRouter(opts RouterOptions) http.Handler {
 
 	router.Get("/api/templates", state.getTemplates())
 	router.Post("/api/templates", state.createTemplate())
+
+	router.Get("/api/events", state.events())
 
 	webFS := resolveWebFS()
 	router.Get("/", staticHandler(webFS))
@@ -425,6 +435,55 @@ func (r *routerState) me() http.HandlerFunc {
 			Username: user.Username,
 			Role:     user.Role,
 		})
+	}
+}
+
+func (r *routerState) events() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		_, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if r.broadcaster == nil {
+			writeJSONError(w, http.StatusInternalServerError, "events not available")
+			return
+		}
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeJSONError(w, http.StatusInternalServerError, "streaming not supported")
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+
+		sub := r.broadcaster.Subscribe(req.Context())
+		defer sub.Done()
+
+		for {
+			select {
+			case ev, ok := <-sub.C:
+				if !ok {
+					return
+				}
+				data, err := json.Marshal(ev.Data)
+				if err != nil {
+					r.logger.Warn("events: marshal event data", "err", err, "type", ev.Type)
+					continue
+				}
+				if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Type, data); err != nil {
+					return
+				}
+				flusher.Flush()
+			case <-req.Context().Done():
+				return
+			}
+		}
 	}
 }
 

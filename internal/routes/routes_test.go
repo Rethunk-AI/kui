@@ -2,12 +2,15 @@ package routes
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -16,6 +19,13 @@ import (
 )
 
 const testJWTSecret = "0123456789abcdef0123456789abcdef"
+
+// flushRecorder wraps ResponseRecorder to implement http.Flusher for SSE tests.
+type flushRecorder struct {
+	*httptest.ResponseRecorder
+}
+
+func (f *flushRecorder) Flush() {}
 
 func TestSetupStatus_ConfigMissing(t *testing.T) {
 	t.Parallel()
@@ -451,6 +461,7 @@ func TestDiscoveryEndpoints_RequireAuth(t *testing.T) {
 		{"/api/hosts/local/networks"},
 		{"/api/hosts/local/vms/00000000-0000-0000-0000-000000000000"},
 		{"/api/templates"},
+		{"/api/events"},
 	}
 	for _, tt := range tests {
 		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
@@ -459,5 +470,87 @@ func TestDiscoveryEndpoints_RequireAuth(t *testing.T) {
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("GET %s: expected 401 without auth, got %d", tt.path, rec.Code)
 		}
+	}
+}
+
+func TestEvents_SSEStream(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, err = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        loaded,
+		ConfigPath:    configPath,
+		ConfigPresent: true,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	loginPayload := map[string]string{"username": "admin", "password": "secret"}
+	loginBody, _ := json.Marshal(loginPayload)
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login expected 200, got %d: %s", loginRec.Code, loginRec.Body.String())
+	}
+	var loginResp struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(loginRec.Body).Decode(&loginResp); err != nil {
+		t.Fatalf("decode login: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil).WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	rec := httptest.NewRecorder()
+	// ResponseRecorder does not implement http.Flusher; wrap it for SSE tests.
+	flusher := &flushRecorder{ResponseRecorder: rec}
+	handler.ServeHTTP(flusher, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("expected Content-Type: text/event-stream, got %q", ct)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: host.online") {
+		t.Errorf("expected SSE event host.online in body, got: %q", body)
+	}
+	if !strings.Contains(body, `data: {"host_id":"kui"}`) {
+		t.Errorf("expected SSE data with host_id kui in body, got: %q", body)
 	}
 }

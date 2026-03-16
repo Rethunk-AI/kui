@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [{ "command": ".cursor/hooks/lint.sh" }],
+    "stop": [{ "command": ".cursor/hooks/typecheck.sh" }]
+  }
+}

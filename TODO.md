@@ -8,9 +8,9 @@
 
 | Check | Status |
 |-------|--------|
-| Build | N/A — no codebase (greenfield) |
-| Test | N/A |
-| Vet | N/A |
+| Build | pass |
+| Test | pass |
+| Vet | pass |
 | Spec integrity | pass |
 | Doc integrity | pass |
 
@@ -39,24 +39,34 @@ None (greenfield).
 
 ### Foundation (Order 1–2)
 
-| Task ID | Spec | Description | Requirements |
-|---------|------|-------------|--------------|
-| T1 | schema-storage | Scaffold go.mod, internal/config (YAML load, env overrides, validation) | schema-storage spec §2.6; stack.md; no stubs |
-| T2 | schema-storage | Implement internal/db (SQLite, schema §2.2) | DDL from spec; apply on init |
-| T3 | schema-storage | Implement internal/git (templates + audit layout) | spec §2.4; init dirs |
-| T4 | spec-libvirt-connector | Implement Connector interface, domain/network/storage ops | plan §2; test driver for CI |
+| Task ID | Spec | Description | Status |
+|---------|------|-------------|--------|
+| T1 | schema-storage | Scaffold go.mod, internal/config (YAML load, env overrides, validation) | DONE |
+| T2 | schema-storage | Implement internal/db (SQLite, schema §2.2) | DONE |
+| T3 | schema-storage | Implement internal/git (templates + audit layout) | DONE |
+| T4 | spec-libvirt-connector | Implement Connector interface, domain/network/storage ops | DONE |
 
 ### Core (Order 3–5)
 
-| Task ID | Spec | Description | Requirements |
-|---------|------|-------------|--------------|
-| T5 | spec-application-bootstrap | cmd/kui/main.go, config load, middleware, routes, startup/shutdown | bootstrap plan §2–8 |
+| Task ID | Spec | Description | Status |
+|---------|------|-------------|--------|
+| T5 | spec-application-bootstrap | cmd/kui/main.go, config load, middleware, routes, startup/shutdown | DONE |
 | T6 | api-auth | Auth service, setup endpoints, JWT middleware | api-auth spec |
 | T7 | spec-audit-integration | Audit service, integration points | audit spec |
 
 ### Feature (Order 6+)
 
 Deferred until foundation and core complete.
+
+---
+
+## Security Audit Findings (2026-03-16)
+
+See security-auditor run. Summary:
+- **High:** Config file chmod 0444 exposes JWT secret; setup/complete can recreate admin when DB has no users
+- **Medium:** validate-host leaks URI/errors; session cookie Secure behind proxy; no login rate limiting
+- **Low:** jwt_secret not required in normal mode
+- **Positive:** bcrypt for passwords; parameterized SQL; no secrets in examples
 
 ---
 

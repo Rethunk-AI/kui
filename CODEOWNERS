@@ -1,0 +1,5 @@
+# CODEOWNERS — default owners for the entire repo.
+# GitHub and GitLab both read from root. Syntax: glob @user_or_org/team
+# Update @maintainers with your org/team or username.
+
+* @maintainers

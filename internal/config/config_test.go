@@ -1,0 +1,77 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+const validJWTSecret = "0123456789abcdef0123456789abcdef"
+
+func TestLoad(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	configContent := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+    keyfile:
+jwt_secret: "` + validJWTSecret + `"
+`)
+
+	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if cfg.DefaultHost != "local" {
+		t.Fatalf("expected default host local, got %q", cfg.DefaultHost)
+	}
+	if cfg.DefaultNameTemplate != "{source}" {
+		t.Fatalf("expected default name template, got %q", cfg.DefaultNameTemplate)
+	}
+	if cfg.DB.Path != "/var/lib/kui/kui.db" {
+		t.Fatalf("expected db path /var/lib/kui/kui.db, got %q", cfg.DB.Path)
+	}
+	if cfg.Git.Path != "/var/lib/kui" {
+		t.Fatalf("expected git path /var/lib/kui, got %q", cfg.Git.Path)
+	}
+	if cfg.Session.Timeout != Duration(24*time.Hour) {
+		t.Fatalf("expected session timeout 24h, got %s", cfg.Session.Timeout.String())
+	}
+	if len(cfg.CORS.AllowedOrigins) != 1 || cfg.CORS.AllowedOrigins[0] != "http://localhost:5173" {
+		t.Fatalf("unexpected cors origins: %v", cfg.CORS.AllowedOrigins)
+	}
+	if cfg.VMDefaults.CPU != 2 {
+		t.Fatalf("expected default vm cpu 2, got %d", cfg.VMDefaults.CPU)
+	}
+	if cfg.VMDefaults.RAMMB != 2048 {
+		t.Fatalf("expected default vm ram_mb 2048, got %d", cfg.VMDefaults.RAMMB)
+	}
+	if cfg.VMDefaults.Network != "default" {
+		t.Fatalf("expected default vm network default, got %q", cfg.VMDefaults.Network)
+	}
+}
+
+func TestLoadRejectsMissingHosts(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "missing-hosts.yaml")
+	configContent := []byte(`jwt_secret: "` + validJWTSecret + `"
+`)
+
+	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := Load(configPath); err == nil {
+		t.Fatal("expected missing hosts error")
+	}
+}

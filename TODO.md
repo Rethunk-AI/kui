@@ -52,7 +52,7 @@
 | Task ID | Spec | Description | Status |
 |---------|------|-------------|--------|
 | T5 | spec-application-bootstrap | cmd/kui/main.go, config load, middleware, routes, startup/shutdown | DONE |
-| T6 | api-auth | Auth service, setup endpoints, JWT middleware, preferences, hosts | In progress (preferences + hosts pending) |
+| T6 | api-auth | Auth service, setup endpoints, JWT middleware, preferences, hosts | DONE |
 | T7 | spec-audit-integration | Audit service, integration points | audit spec |
 
 ### Feature (Order 6+)

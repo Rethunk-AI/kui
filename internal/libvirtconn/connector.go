@@ -6,6 +6,7 @@ package libvirtconn
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -14,6 +15,10 @@ import (
 
 	"libvirt.org/go/libvirt"
 )
+
+// ErrLibvirtDisabled is returned by Connect when built without -tags libvirt.
+// When built with libvirt, Connect never returns this.
+var ErrLibvirtDisabled = errors.New("libvirt connector disabled")
 
 type HostConfig struct {
 	URI     string

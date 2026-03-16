@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -338,6 +339,16 @@ func validateHosts(hosts []Host) error {
 			return fmt.Errorf("duplicate host id %q", host.ID)
 		}
 		seen[host.ID] = struct{}{}
+
+		if strings.HasPrefix(strings.TrimSpace(host.URI), "qemu+ssh://") {
+			keyfileSet := host.Keyfile != nil && strings.TrimSpace(*host.Keyfile) != ""
+			if !keyfileSet {
+				parsed, err := url.Parse(host.URI)
+				if err != nil || strings.TrimSpace(parsed.Query().Get("keyfile")) == "" {
+					return fmt.Errorf("host %q: keyfile is required for qemu+ssh URI (set in config or %s)", host.ID, hostKeyfileEnvVar(host.ID))
+				}
+			}
+		}
 	}
 
 	return nil

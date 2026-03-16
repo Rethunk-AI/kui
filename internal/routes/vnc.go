@@ -2,11 +2,11 @@ package routes
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +18,7 @@ import (
 	"github.com/kui/kui/internal/config"
 	"github.com/kui/kui/internal/libvirtconn"
 	mw "github.com/kui/kui/internal/middleware"
+	"github.com/kui/kui/internal/sshtunnel"
 )
 
 const (
@@ -137,20 +138,37 @@ func (r *routerState) vncProxy() http.HandlerFunc {
 			return
 		}
 
-		if !isLocalLibvirtURI(host.URI) {
-			// TODO: Remote host (qemu+ssh) requires SSH tunnel. MVP: local-only.
-			r.logger.Debug("VNC proxy: remote host not yet supported", "host_id", hostID)
-			writeJSONError(w, http.StatusBadGateway, "remote host VNC not yet supported")
-			return
-		}
-
-		vncAddr := net.JoinHostPort("127.0.0.1", fmt.Sprintf("%d", port))
-
-		vncConn, err := net.Dial("tcp", vncAddr)
-		if err != nil {
-			r.logger.Error("VNC backend unreachable", "host_id", hostID, "libvirt_uuid", libvirtUUID, "addr", vncAddr, "error", err)
-			writeJSONError(w, http.StatusBadGateway, "VNC backend unreachable")
-			return
+		var vncConn net.Conn
+		if isLocalLibvirtURI(host.URI) {
+			vncAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+			vncConn, err = net.Dial("tcp", vncAddr)
+			if err != nil {
+				r.logger.Error("VNC backend unreachable", "host_id", hostID, "libvirt_uuid", libvirtUUID, "addr", vncAddr, "error", err)
+				writeJSONError(w, http.StatusBadGateway, "VNC backend unreachable")
+				return
+			}
+		} else {
+			sshCfg, err := sshtunnel.ParseQemuSSH(host.URI)
+			if err != nil {
+				r.logger.Error("VNC proxy: invalid qemu+ssh uri", "host_id", hostID, "error", err)
+				writeJSONError(w, http.StatusBadGateway, "remote host VNC: invalid SSH config")
+				return
+			}
+			if sshCfg == nil {
+				r.logger.Debug("VNC proxy: unsupported remote URI scheme", "host_id", hostID, "uri", host.URI)
+				writeJSONError(w, http.StatusBadGateway, "remote host VNC not supported")
+				return
+			}
+			if host.Keyfile != nil && *host.Keyfile != "" {
+				sshCfg.Keyfile = *host.Keyfile
+			}
+			vncAddr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+			vncConn, err = sshtunnel.DialRemote(req.Context(), sshCfg, "tcp", vncAddr)
+			if err != nil {
+				r.logger.Error("VNC proxy: SSH tunnel failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
+				writeJSONError(w, http.StatusBadGateway, "VNC backend unreachable")
+				return
+			}
 		}
 		defer vncConn.Close()
 

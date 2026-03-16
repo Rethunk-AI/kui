@@ -11,7 +11,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
 
-	"github.com/kui/kui/internal/config"
 	"github.com/kui/kui/internal/libvirtconn"
 	mw "github.com/kui/kui/internal/middleware"
 )
@@ -72,25 +71,7 @@ func (r *routerState) serialProxy() http.HandlerFunc {
 			return
 		}
 
-		var host *config.Host
-		for i := range r.config.Hosts {
-			if r.config.Hosts[i].ID == hostID {
-				host = &r.config.Hosts[i]
-				break
-			}
-		}
-		if host == nil {
-			writeJSONError(w, http.StatusNotFound, "host not found")
-			return
-		}
-
-		if !isLocalLibvirtURI(host.URI) {
-			// TODO: Remote host (qemu+ssh) requires SSH tunnel. MVP: local-only.
-			r.logger.Debug("serial proxy: remote host not yet supported", "host_id", hostID)
-			writeJSONError(w, http.StatusBadGateway, "remote host serial not yet supported")
-			return
-		}
-
+		// Serial uses libvirt virDomainOpenConsole; for qemu+ssh, libvirt tunnels all API calls over SSH.
 		serialStream, err := conn.OpenSerialConsole(req.Context(), libvirtUUID)
 		if err != nil {
 			r.logger.Error("open serial console failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)

@@ -111,3 +111,95 @@ func TestHostKeyfileEnvVarUsesKUI_HOST_Prefix(t *testing.T) {
 		t.Fatalf("hostKeyfileEnvVar(remote1) = %q, want KUI_HOST_REMOTE1_KEYFILE", got)
 	}
 }
+
+func TestLoadRejectsQemuSSHWithoutKeyfile(t *testing.T) {
+	t.Parallel()
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
+	_ = os.Unsetenv("KUI_HOST_REMOTE_KEYFILE")
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	configContent := []byte(`hosts:
+  - id: remote
+    uri: qemu+ssh://user@host/system
+jwt_secret: "` + validJWTSecret + `"
+`)
+
+	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := Load(configPath); err == nil {
+		t.Fatal("expected qemu+ssh keyfile validation error")
+	}
+}
+
+func TestLoadAcceptsQemuSSHWithKeyfileInConfig(t *testing.T) {
+	t.Parallel()
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
+	_ = os.Unsetenv("KUI_HOST_REMOTE_KEYFILE")
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	configContent := []byte(`hosts:
+  - id: remote
+    uri: qemu+ssh://user@host/system
+    keyfile: /path/to/key
+jwt_secret: "` + validJWTSecret + `"
+`)
+
+	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := Load(configPath); err != nil {
+		t.Fatalf("expected load to succeed: %v", err)
+	}
+}
+
+func TestLoadAcceptsQemuSSHWithKeyfileInEnv(t *testing.T) {
+	t.Parallel()
+	t.Cleanup(func() { os.Unsetenv("KUI_HOST_REMOTE_KEYFILE") })
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
+	if err := os.Setenv("KUI_HOST_REMOTE_KEYFILE", "/env/key"); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	configContent := []byte(`hosts:
+  - id: remote
+    uri: qemu+ssh://user@host/system
+jwt_secret: "` + validJWTSecret + `"
+`)
+
+	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := Load(configPath); err != nil {
+		t.Fatalf("expected load to succeed with env keyfile: %v", err)
+	}
+}
+
+func TestLoadAcceptsQemuSSHWithKeyfileInURI(t *testing.T) {
+	t.Parallel()
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
+	_ = os.Unsetenv("KUI_HOST_REMOTE_KEYFILE")
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	configContent := []byte(`hosts:
+  - id: remote
+    uri: qemu+ssh://user@host/system?keyfile=/uri/key
+jwt_secret: "` + validJWTSecret + `"
+`)
+
+	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := Load(configPath); err != nil {
+		t.Fatalf("expected load to succeed with keyfile in URI: %v", err)
+	}
+}

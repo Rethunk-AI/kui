@@ -184,7 +184,7 @@ func (c *connector) DefineXML(ctx context.Context, xmlConfig string) (DomainInfo
 		_ = domain.Free()
 	}()
 
-	return c.readDomainInfo(domain)
+	return c.readDomainInfo(*domain)
 }
 
 func (c *connector) Create(ctx context.Context, uuid string) error {
@@ -524,7 +524,7 @@ func (c *connector) CreateVolumeFromXML(ctx context.Context, poolName string, xm
 		_ = pool.Free()
 	}()
 
-	vol, err := pool.CreateStorageVolFromXML(xml, 0)
+	vol, err := pool.StorageVolCreateXML(xml, 0)
 	if err != nil {
 		return StorageVolumeInfo{}, c.wrapErr("create volume from XML", err)
 	}
@@ -577,7 +577,7 @@ func (c *connector) CloneVolume(ctx context.Context, poolName string, sourceName
 	}()
 
 	cloneXML := fmt.Sprintf(`<volume><name>%s</name></volume>`, targetName)
-	_, err = pool.CreateStorageVolFromXMLFrom(cloneXML, sourceVol, 0)
+	_, err = pool.StorageVolCreateXMLFrom(cloneXML, sourceVol, 0)
 	if err != nil {
 		return c.wrapErr("clone volume", err)
 	}

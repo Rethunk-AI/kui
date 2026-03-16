@@ -20,3 +20,47 @@ body {
   min-height: 100vh;
   padding: 1rem;
 }
+
+.first-run-checklist {
+  max-width: 28rem;
+}
+.first-run-checklist h2 {
+  margin-top: 0;
+}
+.first-run-checklist ul {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+}
+.first-run-checklist button {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+}
+
+.login-form {
+  max-width: 20rem;
+}
+.login-form label {
+  display: block;
+  margin: 0.5rem 0;
+}
+.login-form input {
+  display: block;
+  width: 100%;
+  margin-top: 0.2rem;
+  padding: 0.4rem;
+}
+.login-form button {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+}
+.login-error {
+  color: #e57373;
+  margin-top: 0.5rem;
+  min-height: 1.2em;
+}
+
+.error {
+  color: #e57373;
+}

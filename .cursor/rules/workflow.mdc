@@ -54,6 +54,10 @@ When the user asks for commits, git history, or conventional commits:
 - For Go code, prefer dependency order: schema/proto → internal packages → cmd.
 - Keep mechanical changes (formatting, renames) separate from functional ones.
 
+## Canonical configuration
+
+Edit only canonical sources. Do not edit `.claude/` or `.codex/` (symlinks). See `rules/canonical-config.mdc`.
+
 ## Security gate
 
 Invoke `security-auditor` (read-only) whenever changes touch:

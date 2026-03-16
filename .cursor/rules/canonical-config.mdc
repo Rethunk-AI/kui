@@ -1,0 +1,24 @@
+---
+description: Canonical file mapping — edit only canonical sources, never symlinks
+alwaysApply: true
+---
+
+# Canonical Configuration
+
+Edit only the canonical sources below. Do not edit symlinks or derived files.
+
+## AI/LLM rules, subagents, skills
+
+- **Edit:** `.cursor/rules/`, `.cursor/agents/`, `.cursor/skills/`
+- **Do not edit:** `.claude/`, `.codex/` — symlinks to `.cursor/` for Claude Code and Codex compatibility
+
+## Other config
+
+| Config | Canonical | Do not edit |
+|--------|-----------|-------------|
+| Lint | `.golangci.yml` | — |
+| Editor | `.editorconfig` | — |
+| Git ignore | `.gitignore` | — |
+| MR/PR template | `.github/PULL_REQUEST_TEMPLATE.md` | `.gitlab/merge_request_templates/` (symlink) |
+
+Full mapping: [docs/project-config-canonical.md](../../docs/project-config-canonical.md)

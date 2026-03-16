@@ -1,0 +1,50 @@
+# GitLab CI — mirrors .github/workflows/ci.yml
+# Go 1.23, build/test/vet/lint/coverage
+
+stages:
+  - build
+  - test
+  - lint
+
+variables:
+  GO_VERSION: "1.23"
+
+.build: &build
+  image: golang:${GO_VERSION}
+  before_script:
+    - go version
+
+build:
+  <<: *build
+  stage: build
+  script:
+    - go build ./...
+
+test:
+  <<: *build
+  stage: test
+  script:
+    - go test ./...
+
+vet:
+  <<: *build
+  stage: test
+  script:
+    - go vet ./...
+
+lint:
+  image: golangci/golangci-lint:v2.4-alpine
+  stage: lint
+  script:
+    - golangci-lint run ./...
+
+coverage:
+  <<: *build
+  stage: test
+  script:
+    - go test -coverprofile=coverage.out ./...
+    - go tool cover -func=coverage.out
+  artifacts:
+    when: always
+    paths:
+      - coverage.out

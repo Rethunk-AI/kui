@@ -142,3 +142,204 @@ body {
 .error {
   color: #e57373;
 }
+
+/* Alerts toggle and wrapper */
+.alerts-toggle {
+  padding: 0.35rem 0.6rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: var(--kui-fg);
+  font-family: var(--kui-font);
+  cursor: pointer;
+}
+.alerts-toggle:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.alerts-panel-wrapper--hidden .alerts-panel {
+  display: none;
+}
+
+/* Alerts panel — collapsible sidebar */
+.alerts-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 20rem;
+  max-width: 90vw;
+  max-height: 100vh;
+  background: rgba(30, 30, 30, 0.98);
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+}
+.alerts-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+.alerts-panel__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.alerts-panel__clear {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: var(--kui-fg);
+  cursor: pointer;
+}
+.alerts-panel__clear:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+.alerts-panel__clear:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.alerts-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+.alerts-panel__item {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.alerts-panel__item--host_offline,
+.alerts-panel__item--vm_state_failure,
+.alerts-panel__item--create_failure,
+.alerts-panel__item--clone_failure,
+.alerts-panel__item--console_failure,
+.alerts-panel__item--api_error {
+  border-left: 3px solid #e57373;
+}
+.alerts-panel__item--host_online,
+.alerts-panel__item--vm_state_changed {
+  border-left: 3px solid #81c784;
+}
+.alerts-panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.alerts-panel__type {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+.alerts-panel__message {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+.alerts-panel__time {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+.alerts-panel__dismiss {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.75rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: var(--kui-fg);
+  cursor: pointer;
+}
+.alerts-panel__dismiss:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.alerts-panel__details-row {
+  margin-top: 0.5rem;
+}
+.alerts-panel__details-toggle {
+  padding: 0.2rem 0;
+  font-size: 0.8rem;
+  background: none;
+  border: none;
+  color: #81c784;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.alerts-panel__details-block {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.alerts-panel__details-block--hidden {
+  display: none;
+}
+
+/* Toast — top-right corner */
+.toast-container {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+.toast-container .toast {
+  pointer-events: auto;
+}
+.toast {
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: toast-in 0.2s ease-out;
+  cursor: pointer;
+}
+.toast--dismissing {
+  animation: toast-out 0.2s ease-out forwards;
+}
+.toast--info {
+  background: rgba(33, 150, 243, 0.9);
+  color: #fff;
+}
+.toast--success {
+  background: rgba(76, 175, 80, 0.9);
+  color: #fff;
+}
+.toast--warn {
+  background: rgba(255, 152, 0, 0.9);
+  color: #1a1a1a;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+}

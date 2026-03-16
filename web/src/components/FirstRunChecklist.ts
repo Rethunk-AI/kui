@@ -2,7 +2,8 @@
  * First-run checklist shown when VM list is empty and onboarding not dismissed.
  * Spec §5: create VM (pool/path), clone VM; Dismiss persists via PUT /api/preferences.
  */
-import { apiFetch, putPreferences } from "../lib/api";
+import { ApiError, putPreferences } from "../lib/api";
+import { addAlert } from "../lib/alerts";
 
 export function shouldShowChecklist(
   vms: unknown[],
@@ -40,8 +41,10 @@ export function renderFirstRunChecklist(
     try {
       await putPreferences({ list_view_options: { onboarding_dismissed: true } });
       onDismissed();
-    } catch {
+    } catch (err) {
       dismissBtn.disabled = false;
+      const msg = err instanceof ApiError ? err.message : "Failed to save preferences";
+      addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);
     }
   });
   section.appendChild(dismissBtn);

@@ -14,10 +14,13 @@ import {
   type Preferences,
   type VMsResponse,
 } from "./lib/api";
+import { addAlert } from "./lib/alerts";
+import { subscribeToEvents } from "./lib/events";
 import {
   renderFirstRunChecklist,
   shouldShowChecklist,
 } from "./components/FirstRunChecklist";
+import { renderAlertsPanel } from "./components/AlertsPanel";
 import { renderHostSelector } from "./components/HostSelector";
 
 const appEl = document.getElementById("app");
@@ -49,6 +52,9 @@ async function bootstrap(): Promise<void> {
   renderMain(app, vmsResp, preferences, hosts, bootstrap);
 }
 
+let eventsUnsub: (() => void) | null = null;
+let alertsPanelUnsub: (() => void) | null = null;
+
 function renderMain(
   container: HTMLElement,
   vmsResp: VMsResponse,
@@ -57,6 +63,17 @@ function renderMain(
   onDataChange: () => void
 ): void {
   container.innerHTML = "";
+
+  if (eventsUnsub) {
+    eventsUnsub();
+    eventsUnsub = null;
+  }
+  if (alertsPanelUnsub) {
+    alertsPanelUnsub();
+    alertsPanelUnsub = null;
+  }
+
+  eventsUnsub = subscribeToEvents();
 
   const layout = document.createElement("div");
   layout.className = "app-layout";
@@ -77,15 +94,36 @@ function renderMain(
         await putPreferences({ default_host_id: hostId });
         const prefs = await apiFetch<Preferences>("/preferences");
         renderMain(container, vmsResp, prefs, hosts, onDataChange);
-      } catch {
-        // Re-render to restore previous state
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : "Failed to save host preference";
+        addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);
         renderMain(container, vmsResp, preferences, hosts, onDataChange);
       }
     },
   });
   nav.appendChild(hostSelectorEl);
+
+  const alertsToggle = document.createElement("button");
+  alertsToggle.type = "button";
+  alertsToggle.className = "alerts-toggle";
+  alertsToggle.textContent = "Alerts";
+  alertsToggle.setAttribute("aria-label", "Toggle alerts panel");
+  let alertsPanelVisible = true;
+  const alertsPanelWrapper = document.createElement("div");
+  alertsPanelWrapper.className = "alerts-panel-wrapper";
+  const alertsPanelEl = document.createElement("div");
+  alertsPanelWrapper.appendChild(alertsPanelEl);
+  alertsPanelUnsub = renderAlertsPanel(alertsPanelEl);
+
+  alertsToggle.addEventListener("click", () => {
+    alertsPanelVisible = !alertsPanelVisible;
+    alertsPanelWrapper.classList.toggle("alerts-panel-wrapper--hidden", !alertsPanelVisible);
+  });
+  nav.appendChild(alertsToggle);
   header.appendChild(nav);
   layout.appendChild(header);
+
+  layout.appendChild(alertsPanelWrapper);
 
   const content = document.createElement("main");
   content.className = "app-content";

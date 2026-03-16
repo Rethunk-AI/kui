@@ -24,6 +24,14 @@ Binding technical decisions. Each topic appears once; later phases supersede ear
 | A12 | KUI proxies all console traffic (browser → KUI → libvirt host) | Verified |
 | A13 | Session: JWT (stateless) | Verified |
 | A14 | SSH keys in config (YAML) only; env override for Docker | Verified |
+| A15 | KUI maintenance mode (upgrade, DB migration) — defer to spec when designing deployment/upgrade flows | Verified |
+| A16 | KUI degraded state — host-offline behavior (show reachable VMs only) is sufficient; no separate degraded mode | Verified |
+| A17 | KUI recovery (DB/config corruption) — v3 backup/restore covers it; no additional MVP recovery flow | Verified |
+| A18 | VM maintenance mode or quarantine — defer to v2; libvirt pause is sufficient for MVP | Verified |
+| A19 | Stuck VM detection — libvirt state only (e.g., domain running but qemu process gone) | Verified |
+| A20 | Stuck VM recovery actions — escalating: force stop → force destroy → undefine | Verified |
+| A21 | Orphan conflict resolution — display name collision, UUID on multiple hosts, claimed-but-host_id-mismatch | Verified |
+| A22 | Domain XML edit — defer to spec (full vs guided) | Verified |
 
 ---
 
@@ -120,6 +128,15 @@ Binding technical decisions. Each topic appears once; later phases supersede ear
 | VM templates | Stored in git (full audit chain). Name + base image required; CPU/RAM/network have defaults. MVP: template creation exists (de-emphasized); create VM from template in v2. Save VM as template: template_storage or user picks; else same pool. Disk naming: MVP {vm_name} only |
 | Versioning | v1 = core; v2 = enhancements (shortcuts, a11y); v3 = ops (backup, import/export) |
 | Search/filter | Superseded by Canvas — N/A for MVP |
+| KUI maintenance mode | Defer to spec — decide when designing deployment/upgrade flows |
+| KUI degraded state | Host-offline behavior covers it — show reachable VMs only; no separate degraded mode |
+| KUI recovery | v3 backup/restore; first-run wizard + manual restore sufficient until then |
+| VM maintenance mode | Defer to v2; libvirt pause/resume sufficient for MVP |
+| Stuck VM detection | Libvirt state only — e.g., domain in running but qemu process gone |
+| Stuck VM recovery | Escalating actions: force stop → force destroy → undefine. v2 |
+| Orphan bulk claim | Bulk claim + conflict resolution. v2 |
+| Orphan conflict types | Display name collision; UUID exists on multiple hosts; claimed in KUI but host_id mismatch |
+| VM repair (broken config/disk) | Edit domain XML in UI. v2. Full vs guided — defer to spec |
 
 ---
 
@@ -199,3 +216,10 @@ Binding technical decisions. Each topic appears once; later phases supersede ear
 | VM create disk | Pool+path: pick existing volume or auto-gen + size; user can override with explicit path. Template-based create v2 |
 | VM rename | KUI display name stored in SQLite |
 | VM scale (MVP) | 5–20 VMs — design for this range |
+| KUI maintenance mode | Defer to spec |
+| KUI degraded | Host offline covers it |
+| KUI recovery | v3 backup/restore |
+| VM maintenance mode | v2 |
+| Stuck VM | Explicit detection (libvirt state) + escalating recovery (force stop → destroy → undefine). v2 |
+| Orphan bulk | Bulk claim + conflict resolution (name, UUID, host_id). v2 |
+| VM repair | Domain XML edit. v2. Full vs guided defer to spec |

@@ -1,1 +1,5 @@
 # KUI
+
+Web-based KVM User Interface for users who prefer a UI over CLI. Connects to libvirt hosts for VM lifecycle, provisioning, and monitoring.
+
+**Docs**: [docs/prd.md](docs/prd.md)

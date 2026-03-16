@@ -1,14 +1,24 @@
 /**
  * KUI SPA bootstrap.
  * Vanilla JS + Vite. Winbox.js compatible.
- * Bootstrap: fetch vms + preferences; 401 → login; else VM list or first-run checklist.
+ * Bootstrap: fetch vms + preferences + hosts; 401 → login; else VM list or first-run checklist.
  */
 import "./styles.css";
-import { ApiError, apiFetch, login, Preferences, VMsResponse } from "./lib/api";
+import {
+  ApiError,
+  apiFetch,
+  fetchHosts,
+  login,
+  putPreferences,
+  type Host,
+  type Preferences,
+  type VMsResponse,
+} from "./lib/api";
 import {
   renderFirstRunChecklist,
   shouldShowChecklist,
 } from "./components/FirstRunChecklist";
+import { renderHostSelector } from "./components/HostSelector";
 
 const appEl = document.getElementById("app");
 if (!appEl) throw new Error("app element missing");
@@ -17,14 +27,17 @@ const app: HTMLElement = appEl;
 async function bootstrap(): Promise<void> {
   let vmsResp: VMsResponse;
   let preferences: Preferences | null = null;
+  let hosts: Host[] = [];
 
   try {
-    const [vms, prefs] = await Promise.all([
+    const [vms, prefs, hostsResp] = await Promise.all([
       apiFetch<VMsResponse>("/vms"),
       apiFetch<Preferences>("/preferences"),
+      fetchHosts(),
     ]);
     vmsResp = vms;
     preferences = prefs;
+    hosts = hostsResp;
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) {
       renderLoginPage(app, bootstrap);
@@ -33,41 +46,82 @@ async function bootstrap(): Promise<void> {
     throw e;
   }
 
-  renderMain(app, vmsResp, preferences, bootstrap);
+  renderMain(app, vmsResp, preferences, hosts, bootstrap);
 }
 
 function renderMain(
   container: HTMLElement,
   vmsResp: VMsResponse,
   preferences: Preferences | null,
+  hosts: Host[],
   onDataChange: () => void
 ): void {
   container.innerHTML = "";
 
+  const layout = document.createElement("div");
+  layout.className = "app-layout";
+
+  const header = document.createElement("header");
+  header.className = "app-header";
+  const nav = document.createElement("nav");
+  nav.className = "app-nav";
+
+  const hostSelectorEl = document.createElement("div");
+  const selectedHostId =
+    preferences?.default_host_id ?? hosts[0]?.id ?? null;
+  renderHostSelector(hostSelectorEl, {
+    hosts,
+    selectedHostId,
+    onChange: async (hostId: string) => {
+      try {
+        await putPreferences({ default_host_id: hostId });
+        const prefs = await apiFetch<Preferences>("/preferences");
+        renderMain(container, vmsResp, prefs, hosts, onDataChange);
+      } catch {
+        // Re-render to restore previous state
+        renderMain(container, vmsResp, preferences, hosts, onDataChange);
+      }
+    },
+  });
+  nav.appendChild(hostSelectorEl);
+  header.appendChild(nav);
+  layout.appendChild(header);
+
+  const content = document.createElement("main");
+  content.className = "app-content";
+
   if (shouldShowChecklist(vmsResp.vms, preferences)) {
     const checklistContainer = document.createElement("div");
-    container.appendChild(checklistContainer);
+    content.appendChild(checklistContainer);
     renderFirstRunChecklist(checklistContainer, async () => {
-      const prefs = await apiFetch<Preferences>("/preferences");
-      renderMain(container, vmsResp, prefs, onDataChange);
+      const [prefs, hostsResp] = await Promise.all([
+        apiFetch<Preferences>("/preferences"),
+        fetchHosts(),
+      ]);
+      renderMain(container, vmsResp, prefs, hostsResp, onDataChange);
     });
-    return;
+  } else {
+    const vmList = document.createElement("div");
+    vmList.className = "vm-list";
+    if (vmsResp.vms.length === 0) {
+      vmList.innerHTML = "<p>No VMs</p>";
+    } else {
+      const ul = document.createElement("ul");
+      for (const vm of vmsResp.vms as {
+        display_name?: string;
+        host_id?: string;
+      }[]) {
+        const li = document.createElement("li");
+        li.textContent = vm.display_name ?? vm.host_id ?? "VM";
+        ul.appendChild(li);
+      }
+      vmList.appendChild(ul);
+    }
+    content.appendChild(vmList);
   }
 
-  const vmList = document.createElement("div");
-  vmList.className = "vm-list";
-  if (vmsResp.vms.length === 0) {
-    vmList.innerHTML = "<p>No VMs</p>";
-  } else {
-    const ul = document.createElement("ul");
-    for (const vm of vmsResp.vms as { display_name?: string; host_id?: string }[]) {
-      const li = document.createElement("li");
-      li.textContent = vm.display_name ?? vm.host_id ?? "VM";
-      ul.appendChild(li);
-    }
-    vmList.appendChild(ul);
-  }
-  container.appendChild(vmList);
+  layout.appendChild(content);
+  container.appendChild(layout);
 }
 
 function renderLoginPage(container: HTMLElement, onSuccess: () => void): void {

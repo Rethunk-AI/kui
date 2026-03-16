@@ -14,6 +14,11 @@ export class ApiError extends Error {
   }
 }
 
+export interface Host {
+  id: string;
+  uri: string;
+}
+
 export interface Preferences {
   default_host_id?: string | null;
   list_view_options?: {
@@ -62,10 +67,15 @@ export async function login(username: string, password: string): Promise<void> {
 }
 
 export async function putPreferences(body: {
+  default_host_id?: string | null;
   list_view_options?: { onboarding_dismissed?: boolean };
 }): Promise<Preferences> {
   return apiFetch<Preferences>("/preferences", {
     method: "PUT",
     body: JSON.stringify(body),
   });
+}
+
+export async function fetchHosts(): Promise<Host[]> {
+  return apiFetch<Host[]>("/hosts");
 }

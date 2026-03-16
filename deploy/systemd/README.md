@@ -1,6 +1,6 @@
 # Systemd Deployment
 
-KUI is deployed via systemd as the primary mechanism.
+KUI is deployed via systemd as the primary mechanism. For TLS and reverse-proxy setup (nginx/Caddy), see [docs/deployment.md](../docs/deployment.md).
 
 ## Prerequisites
 

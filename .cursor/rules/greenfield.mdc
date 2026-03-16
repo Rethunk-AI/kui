@@ -1,0 +1,24 @@
+---
+description: Greenfield project — no legacy, no backwards compatibility, golden truth only
+alwaysApply: true
+---
+
+# Greenfield
+
+This project is **greenfield**. There is no existing deployment to migrate.
+
+## Rules
+
+1. **Implement the target design directly.** No migration paths, no fallbacks, no "during transition" modes.
+2. **Remove obsolete code immediately.** Do not keep deprecated formats, config options, or code paths "for compatibility."
+3. **Schema and config are canonical.** No nullable columns for migration, no `mode: old|new`—define the correct state and implement it.
+4. **Scripts are initial-setup only.** No backfill scripts, no "upgrade from previous version" flows. New deployments use the seed.
+5. **Documentation reflects reality.** No "future release" or "planned" language for implemented features. No migration guides.
+
+## When designing features
+
+- Choose the right design. Implement it. Do not add compatibility layers.
+- If a spec mentions "migration" or "backfill," treat it as out of scope—design for fresh installs only.
+- Planners: plans must not include migration strategy, backfill steps, or backwards-compatibility sections.
+- Developers: reject tasks that ask for legacy support; implement golden truth only.
+- Verifiers: flag any code or docs that add migration paths, deprecated modes, or backwards-compatibility logic.

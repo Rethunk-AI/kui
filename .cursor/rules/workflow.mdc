@@ -1,0 +1,63 @@
+---
+description: Core workflow orchestration — plan before implementing, verify before claiming done
+alwaysApply: true
+---
+
+# Workflow
+
+## Non-trivial work follows the SDD pattern
+
+1. Check `specs/active/` for existing plans before acting on any feature.
+2. For non-trivial work, invoke the `planner` subagent first — it writes `specs/active/[task-id]/plan.md` in isolation.
+3. Invoke the `developer` subagent to implement against the plan.
+4. Invoke the `verifier` subagent before marking anything done.
+
+Trivial changes (typo fixes, single-line config changes) can skip the planner.
+
+## Greenfield
+
+This project is greenfield. Plans and implementations must not include migration paths, backfill steps, or backwards-compatibility logic. See `rules/greenfield.mdc`.
+
+## No stub implementations
+
+Never create stub implementations (placeholder handlers, `return codes.Unimplemented`, no-op functions). Implement functional behavior directly. For deferred or phased work, add explicit `// TODO:` comments in code and explicit TODO items in plans.
+
+## Completion requires evidence
+
+No "done" claims without running verification commands and checking their output. If a command hasn't been run in this session, you cannot claim it passes.
+
+## Context hygiene
+
+- Use the built-in `explore` subagent for codebase searches — not the main context.
+- Use the built-in `shell` subagent for verbose shell sequences.
+- Delegate deep reasoning and artifact creation to subagents.
+
+## Build and verification
+
+This repo is Go-only. Use the Go toolchain and Makefile:
+
+- `go build -o bin/ ./cmd/...` — build all binaries
+- `go test ./...` — run tests
+- `go vet ./...` — static analysis
+- `make all` — build, test, vet
+- Prefer `Makefile` targets when available; use file-scoped commands for single packages (e.g. `go test ./internal/config/...`).
+- External CLIs (`docker`, `kubectl`, `psql`, `golangci-lint`) may be invoked directly.
+
+**Do not execute built binaries.** Verification uses unit tests, integration tests, `go vet`, and linters only. Running `./bin/...` or invoking compiled artifacts is disallowed to avoid arbitrary code execution. Test via `run(args, out, errOut)` seams and `go test`.
+
+## Commit batching
+
+When the user asks for commits, git history, or conventional commits:
+
+- Use the `conventional-commits-and-batching` skill.
+- Batch by theme (one reason per commit); prefer &lt;15 files per commit.
+- For Go code, prefer dependency order: schema/proto → internal packages → cmd.
+- Keep mechanical changes (formatting, renames) separate from functional ones.
+
+## Security gate
+
+Invoke `security-auditor` (read-only) whenever changes touch:
+
+- Database schema or migrations
+- VM lifecycle handlers, libvirt integration, or data-fetching logic
+- Authentication, authorization, or credential handling

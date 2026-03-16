@@ -1,0 +1,31 @@
+---
+description: Go testing patterns for KUI
+globs: "**/*_test.go"
+alwaysApply: false
+---
+
+# Go Testing
+
+## Test-First for New Features
+
+When adding new features: write or update unit tests first, then implement code to make them pass. For regressions: add a failing test that reproduces the bug, then fix to green.
+
+## Patterns
+
+- Use table-driven tests for multiple cases
+- Use `t.Run(name, func(t *testing.T){...})` for subtests
+- Prefer `testing` package; use `testify` only if already a dependency
+- **Libvirt**: Use test driver (`test:///default`) — no mocks. Real DB or testcontainers for integration tests when needed.
+
+## File-Scoped Commands
+
+```bash
+# Test a single package
+go test ./internal/config/...
+
+# Test with verbose output
+go test -v ./cmd/...
+
+# Test with coverage
+go test -cover ./internal/...
+```

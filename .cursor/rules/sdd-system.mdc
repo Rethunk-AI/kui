@@ -1,0 +1,39 @@
+---
+description: SDD methodology — PLAN mode, brief vs full SDD, command-to-phase mapping
+globs: "specs/**/*"
+alwaysApply: false
+---
+
+# SDD System
+
+## PLAN Mode Philosophy
+
+Every SDD command follows **plan-approve-execute**: analyze, plan, approve, execute, document. No file changes until the user approves the plan.
+
+**Four phases:** Analysis (readonly) → Planning (create plan) → Execution (after approval) → Documentation (tracking).
+
+See [workflow.mdc](.cursor/rules/workflow.mdc) for orchestration: planner → developer → verifier.
+
+## When to Use Brief vs Full SDD
+
+**Use brief** (feature-brief.md, ~30 min): single team, familiar tech, clear requirements, low risk, &lt;2 weeks, existing patterns, independent feature.
+
+**Use full SDD** (spec → plan → tasks): multiple teams, new/unfamiliar tech, complex stakeholders, high risk or compliance, 3+ weeks, architectural changes, complex integrations.
+
+**Escalation:** If brief takes &gt;30 min or complexity emerges, upgrade to full SDD. Use `/evolve` for living doc updates during development.
+
+## Command → Phase Mapping
+
+| Output        | Template path                    |
+| ------------- | -------------------------------- |
+| feature-brief | `.sdd/templates/feature-brief-v2.md` |
+| plan          | `.sdd/templates/plan-compact.md` |
+| tasks         | `.sdd/templates/tasks-compact.md` |
+
+Config: `.sdd/config.json`. Specs live in `specs/active/[task-id]/`.
+
+## References
+
+- `.sdd/guidelines.md` — methodology details
+- `.sdd/PLAN_MODE_GUIDE.md` — PLAN mode walkthrough
+- planner subagent — writes `plan.md` from spec; use `.sdd/templates/plan-compact.md` structure

@@ -1,0 +1,50 @@
+---
+description: Go coding standards for KUI
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Go Standards
+
+## Config
+
+- YAML config file primary; env for Docker override. See [docs/prd/decision-log.md](docs/prd/decision-log.md) §2 (Config, Template sources).
+- Path: fixed first (e.g. /etc/kui/config.yaml), then `--config` flag or `KUI_CONFIG` env
+- Load via `internal/config`; fail fast if required values missing
+
+## Database
+
+- Use SQLite (single file, 1–2 users)
+- Use `database/sql` with `modernc.org/sqlite` or similar driver
+- DB path from config YAML; env override for Docker (e.g. `KUI_DB_PATH`)
+
+## HTTP
+
+- Use chi router (`github.com/go-chi/chi/v5`)
+- Keep routes minimal; no magic middleware
+
+## CLI
+
+- Use stdlib `flag` for flags
+- Parse after defining; fail fast if required flags missing
+
+## Error Handling
+
+- Return errors; do not swallow them
+- Use `slog` (log/slog) for structured logging
+- Log at boundaries (main, HTTP handlers); avoid logging deep in helpers
+- Use `slog.Error` + `os.Exit(1)` for startup failures
+
+## Libvirt Testing
+
+- Use libvirt test driver (`test:///default`) for unit tests — no mocks
+- CI runs without KVM; test driver provides in-memory fake hypervisor
+
+## Structure
+
+- Keep `main.go` focused; extract logic to packages or helpers when it grows
+- Avoid god packages; one concern per package
+
+## Greenfield
+
+No backwards compatibility or migration code. Implement the target design directly.

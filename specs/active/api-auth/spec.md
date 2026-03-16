@@ -370,7 +370,7 @@ On successful `POST /api/auth/login`:
 
 ### Session Timeout
 
-- Config key: `session.timeout` (YAML, nested under `session`). Aligns with `specs/active/schema-storage/spec.md` §2.6.
+- Config key: `session.timeout` (YAML, nested under `session`). Aligns with `specs/done/schema-storage/spec.md` §2.6.
 - Default: `24h` (86400 seconds). Decision-log §2 Session timeout.
 - JWT `exp` = `iat` + session timeout value.
 - Cookie `Max-Age` = session timeout value (seconds).
@@ -465,7 +465,7 @@ Defaults:
 
 ### SQLite Schema (Users Table)
 
-Canonical schema from `specs/active/schema-storage/spec.md` §2.2:
+Canonical schema from `specs/done/schema-storage/spec.md` §2.2:
 
 ```sql
 CREATE TABLE IF NOT EXISTS users (

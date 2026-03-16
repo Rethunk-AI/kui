@@ -118,7 +118,7 @@ Examples:
 
 ## 4.1 Canonical references
 
-Paths and timestamp format are defined in `specs/active/schema-storage/spec.md`:
+Paths and timestamp format are defined in `specs/done/schema-storage/spec.md`:
 
 - `audit/vm/<host_id>/<libvirt_uuid>/<timestamp>.diff`
 - `audit/template/<template_id>/<timestamp>.diff`
@@ -353,7 +353,7 @@ For all events:
 
 ## 9. Dependencies
 
-- `specs/active/schema-storage/spec.md` (authoritative SQLite schema, Git layout, diff format, timestamp format).
+- `specs/done/schema-storage/spec.md` (authoritative SQLite schema, Git layout, diff format, timestamp format).
 - `docs/prd/decision-log.md` §§0–4 (scope, verbosity, retention constraints).
 - `docs/prd.md` open assumptions for audit git storage.
 - `specs/active/api-auth` endpoint contract for login/logout action behavior.

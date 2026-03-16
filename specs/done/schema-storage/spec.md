@@ -165,6 +165,7 @@ hosts:
   - `path` default: `/var/lib/kui`
 - `session`
   - `timeout` default: `24h`
+  - `secure_cookies` default: `true` — when true, session cookies use `Secure` flag (required when behind reverse proxy). Set `false` only for local HTTP dev. Env override `KUI_SECURE_COOKIES`.
 - `vm_lifecycle`
   - `graceful_stop_timeout` default: `30s` — timeout before force stop on graceful shutdown
 - `cors`
@@ -212,6 +213,7 @@ db:
 | `KUI_DEFAULT_POOL` | `default_pool` | storage pool name |
 | `KUI_SESSION_TIMEOUT` | `session.timeout` | duration string |
 | `KUI_JWT_SECRET` | `jwt_secret` | JWT signing secret, min 32 bytes |
+| `KUI_SECURE_COOKIES` | `session.secure_cookies` | `true`/`false` — force Secure flag on session cookies (default true for reverse proxy) |
 | `KUI_CORS_ORIGINS` | `cors.allowed_origins` | comma-separated list of allowed origins |
 
 ### 2.7 Minimal valid `config.yaml`

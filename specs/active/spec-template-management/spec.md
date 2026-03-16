@@ -14,7 +14,7 @@ KUI has no implementation-level template lifecycle contract, despite template st
 - Keeps Git as source of truth for template blueprint files while avoiding disk image commits.
 - Ensures template operations behave predictably via explicit pool resolution and base-image validation.
 
-The spec references [docs/prd/decision-log.md](../../docs/prd/decision-log.md), [docs/prd/architecture.md](../../docs/prd/architecture.md), and [specs/active/schema-storage/spec.md](../schema-storage/spec.md).
+The spec references [docs/prd/decision-log.md](../../docs/prd/decision-log.md), [docs/prd/architecture.md](../../docs/prd/architecture.md), and [specs/done/schema-storage/spec.md](../schema-storage/spec.md).
 
 ## 2. Save-VM-as-Template Flow
 
@@ -269,7 +269,7 @@ network: <string>          # optional, default from config vm_defaults.network
 ## 9. Dependencies
 - `docs/prd/decision-log.md`
 - `docs/prd/architecture.md`
-- `specs/active/schema-storage/spec.md`
+- `specs/done/schema-storage/spec.md`
 
 ## 10. Out of Scope
 - VM creation from template (v2).

@@ -2,7 +2,7 @@
 
 **Purpose:** Define the implementation plan for `spec.md` covering save-VM-as-template, list templates, template structure/validation, and API surface. Ready for developer to produce the spec document.
 
-**References:** [docs/prd/decision-log.md](../../docs/prd/decision-log.md) §§0–4, [docs/prd/architecture.md](../../docs/prd/architecture.md), [specs/active/schema-storage/spec.md](../schema-storage/spec.md)
+**References:** [docs/prd/decision-log.md](../../docs/prd/decision-log.md) §§0–4, [docs/prd/architecture.md](../../docs/prd/architecture.md), [specs/done/schema-storage/spec.md](../schema-storage/spec.md)
 
 ---
 
@@ -23,7 +23,7 @@
 
 ### 1.2 Schema-storage Git layout (authoritative)
 
-From `specs/active/schema-storage/spec.md` §2.4:
+From `specs/done/schema-storage/spec.md` §2.4:
 
 ```
 <git_base>/templates/

@@ -380,7 +380,7 @@ Same shape as detail endpoint (refreshed VM state + metadata).
 
 ## 10. Libvirt Connector Responsibilities
 
-- Owns connection handling per request (per-request connection, no pooling; see `specs/active/spec-libvirt-connector/spec.md` §2.3), with config-sourced URI and keyfile.
+- Owns connection handling per request (per-request connection, no pooling; see `specs/done/spec-libvirt-connector/spec.md` §2.3), with config-sourced URI and keyfile.
 - Remote URIs use `qemu+ssh://user@host/system?keyfile=...`.
 - Responsibilities include:
   - connection lifecycle and host-scoped error reporting.

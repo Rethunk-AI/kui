@@ -7,7 +7,7 @@ Create `spec.md` that specifies how audit events are written to SQLite and Git a
 **References:**
 - `docs/prd/decision-log.md` §§0–4 (Audit scope, verbosity, retention)
 - `docs/prd.md` §2 Open Assumptions (audit git storage)
-- `specs/active/schema-storage/spec.md` (Git layout, audit_events DDL, diff format)
+- `specs/done/schema-storage/spec.md` (Git layout, audit_events DDL, diff format)
 
 ---
 

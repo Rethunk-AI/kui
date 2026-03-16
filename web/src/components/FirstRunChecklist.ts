@@ -7,9 +7,10 @@ import { addAlert } from "../lib/alerts";
 
 export function shouldShowChecklist(
   vms: unknown[],
+  orphans: unknown[],
   preferences: { list_view_options?: { onboarding_dismissed?: boolean } | null } | null
 ): boolean {
-  if (vms.length > 0) return false;
+  if (vms.length > 0 || orphans.length > 0) return false;
   const dismissed = preferences?.list_view_options?.onboarding_dismissed;
   return dismissed !== true;
 }

@@ -22,6 +22,7 @@ import {
 } from "./components/FirstRunChecklist";
 import { renderAlertsPanel } from "./components/AlertsPanel";
 import { renderHostSelector } from "./components/HostSelector";
+import { renderVMList } from "./components/VMList";
 
 const appEl = document.getElementById("app");
 if (!appEl) throw new Error("app element missing");
@@ -128,34 +129,29 @@ function renderMain(
   const content = document.createElement("main");
   content.className = "app-content";
 
-  if (shouldShowChecklist(vmsResp.vms, preferences)) {
+  if (shouldShowChecklist(vmsResp.vms, vmsResp.orphans, preferences)) {
     const checklistContainer = document.createElement("div");
     content.appendChild(checklistContainer);
     renderFirstRunChecklist(checklistContainer, async () => {
-      const [prefs, hostsResp] = await Promise.all([
+      const [vms, prefs, hostsResp] = await Promise.all([
+        apiFetch<VMsResponse>("/vms"),
         apiFetch<Preferences>("/preferences"),
         fetchHosts(),
       ]);
-      renderMain(container, vmsResp, prefs, hostsResp, onDataChange);
+      renderMain(container, vms, prefs, hostsResp, onDataChange);
     });
   } else {
-    const vmList = document.createElement("div");
-    vmList.className = "vm-list";
-    if (vmsResp.vms.length === 0) {
-      vmList.innerHTML = "<p>No VMs</p>";
-    } else {
-      const ul = document.createElement("ul");
-      for (const vm of vmsResp.vms as {
-        display_name?: string;
-        host_id?: string;
-      }[]) {
-        const li = document.createElement("li");
-        li.textContent = vm.display_name ?? vm.host_id ?? "VM";
-        ul.appendChild(li);
-      }
-      vmList.appendChild(ul);
-    }
-    content.appendChild(vmList);
+    const vmListContainer = document.createElement("div");
+    vmListContainer.className = "vm-list-container";
+    renderVMList(vmListContainer, {
+      data: vmsResp,
+      groupBy: "last_access",
+      onRefresh: onDataChange,
+      onOpenConsole: (_hostId, _libvirtUuid) => {
+        // Placeholder for T12g: open Winbox console
+      },
+    });
+    content.appendChild(vmListContainer);
   }
 
   layout.appendChild(content);

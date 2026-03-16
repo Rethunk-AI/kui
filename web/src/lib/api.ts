@@ -27,10 +27,28 @@ export interface Preferences {
   } | null;
 }
 
+export interface VM {
+  host_id: string;
+  libvirt_uuid: string;
+  display_name: string | null;
+  claimed: boolean;
+  status: string;
+  console_preference: string | null;
+  last_access: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Orphan {
+  host_id: string;
+  libvirt_uuid: string;
+  name: string;
+}
+
 export interface VMsResponse {
-  vms: unknown[];
+  vms: VM[];
   hosts: Record<string, string>;
-  orphans: unknown[];
+  orphans: Orphan[];
 }
 
 export async function apiFetch<T>(
@@ -78,4 +96,19 @@ export async function putPreferences(body: {
 
 export async function fetchHosts(): Promise<Host[]> {
   return apiFetch<Host[]>("/hosts");
+}
+
+export async function claimVM(
+  hostId: string,
+  libvirtUuid: string,
+  displayName?: string
+): Promise<VM> {
+  return apiFetch<VM>(`/hosts/${encodeURIComponent(hostId)}/vms/${encodeURIComponent(libvirtUuid)}/claim`, {
+    method: "POST",
+    body: JSON.stringify(
+      displayName != null && displayName.trim() !== ""
+        ? { display_name: displayName.trim() }
+        : {}
+    ),
+  });
 }

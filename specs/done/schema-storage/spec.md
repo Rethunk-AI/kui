@@ -97,7 +97,7 @@ CREATE TABLE audit_events (
 
 #### preferences.list_view_options (JSON)
 
-The `list_view_options` column stores a JSON object. Structure matches `GET /api/preferences` response (see `specs/active/api-auth/spec.md` §2). Supported keys:
+The `list_view_options` column stores a JSON object. Structure matches `GET /api/preferences` response (see `specs/done/api-auth/spec.md` §2). Supported keys:
 
 - `group_by` (optional): `"last_access"` | `"created_at"` — VM list grouping key; default `"last_access"`. May be nested under `list_view`.
 - `onboarding_dismissed` (optional): `true` when the user has dismissed the first-run checklist; default `false` when absent.

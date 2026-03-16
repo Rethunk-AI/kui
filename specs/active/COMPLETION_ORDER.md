@@ -9,7 +9,7 @@ Produced from explorer runs on each `specs/active/` specification.
 | 1 | **schema-storage** | Foundation | — | — | DONE. Moved to specs/done/. |
 | 2 | **spec-libvirt-connector** | Foundation | — | — | DONE. Moved to specs/done/. |
 | 3 | **spec-application-bootstrap** | Core | — | — | DONE. Moved to specs/done/. |
-| 4 | **api-auth** | Core | schema-storage, spec-libvirt-connector | spec-audit-integration, spec-ui-deployment | Auth, setup wizard, preferences, hosts. Needs `ValidateConnection` from connector. |
+| 4 | **api-auth** | Core | schema-storage, spec-libvirt-connector | spec-audit-integration, spec-ui-deployment | DONE. Moved to specs/done/. |
 | 5 | **spec-audit-integration** | Core | schema-storage, spec-application-bootstrap, api-auth | spec-vm-lifecycle-create, spec-template-management | Audit service; wire `wizard_complete` in setup, then VM/template events as those specs land. |
 | 6 | **spec-vm-lifecycle-create** | Feature | spec-libvirt-connector, schema-storage, spec-application-bootstrap, spec-audit-integration | spec-template-management, spec-ui-deployment | VM create, clone, lifecycle, orphans, config edit, discovery endpoints. |
 | 7 | **spec-frontend-build** | Feature | spec-application-bootstrap (for serving) | spec-console-realtime, spec-ui-deployment | Vite, web/, Winbox, noVNC, xterm. Can scaffold in parallel with backend. |

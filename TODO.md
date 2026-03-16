@@ -14,25 +14,25 @@
 | Spec integrity | pass |
 | Doc integrity | pass |
 
-### Active Specs (7)
+### Active Specs (6)
 
 | spec_id | progress | blockers |
 |---------|----------|----------|
-| api-auth | spec ✓; impl 0% | — |
-| spec-audit-integration | spec ✓; impl 0% | api-auth |
+| spec-audit-integration | spec ✓; impl 0% | — |
 | spec-vm-lifecycle-create | spec ✓; impl 0% | spec-audit-integration |
 | spec-frontend-build | spec ✓; impl 0% | — |
 | spec-template-management | spec ✓; impl 0% | spec-vm-lifecycle-create |
-| spec-console-realtime | spec ✓; impl 0% | spec-frontend-build, api-auth |
+| spec-console-realtime | spec ✓; impl 0% | spec-frontend-build |
 | spec-ui-deployment | spec ✓; impl 0% | spec-console-realtime, spec-vm-lifecycle-create |
 
-### Done Specs (3)
+### Done Specs (4)
 
 | spec_id | status |
 |---------|--------|
 | schema-storage | DONE — moved to specs/done/ |
 | spec-libvirt-connector | DONE — moved to specs/done/ |
 | spec-application-bootstrap | DONE — moved to specs/done/ |
+| api-auth | DONE — moved to specs/done/ |
 
 ---
 
@@ -67,6 +67,11 @@ All findings addressed:
 - **High:** Config chmod 0o600; setup/complete only when config missing + setupCompleted flag
 - **Medium:** validate-host setup-only + sanitized errors; secure cookies config; login rate limit
 - **Low:** jwt_secret required in normal mode
+
+**Additional fixes (router subagent):**
+- validate-host: removed `err` from Debug logs (prevents URI/keyfile leakage)
+- login: removed username from failed-login Warn logs (prevents enumeration)
+- setup idempotency: added `os.Stat(configPath)` check before write (prevents race)
 
 ---
 

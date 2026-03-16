@@ -356,7 +356,7 @@ For all events:
 - `specs/done/schema-storage/spec.md` (authoritative SQLite schema, Git layout, diff format, timestamp format).
 - `docs/prd/decision-log.md` §§0–4 (scope, verbosity, retention constraints).
 - `docs/prd.md` open assumptions for audit git storage.
-- `specs/active/api-auth` endpoint contract for login/logout action behavior.
+- `specs/done/api-auth` endpoint contract for login/logout action behavior.
 - `specs/active/spec-vm-lifecycle-create/spec.md` for VM operation flow.
 - `specs/active/spec-template-management/spec.md` for template file boundaries.
 

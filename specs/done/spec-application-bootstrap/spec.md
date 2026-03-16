@@ -18,8 +18,8 @@ Decision alignment:
 
 - `docs/prd/decision-log.md` §0 and §2: local Linux targets, single admin-first auth, systemd-first deployment, optional TLS, first-run setup wizard.
 - `docs/prd/architecture.md`: API-anchored architecture with UI and persistence (SQLite, Libvirt Connector).
-- `specs/active/api-auth/spec.md`: endpoint contract for auth and setup routes.
-- `specs/active/schema-storage/spec.md` §§2.2, 2.6: canonical schema and config contract.
+- `specs/done/api-auth/spec.md`: endpoint contract for auth and setup routes.
+- `specs/done/schema-storage/spec.md` §§2.2, 2.6: canonical schema and config contract.
 
 ## §2 Main Entrypoint (`cmd/kui/main.go` flow)
 
@@ -60,7 +60,7 @@ Logging policy:
 
 ### 3.2 Canonical config schema
 
-Config schema and defaults follow `specs/active/schema-storage/spec.md` §2.6:
+Config schema and defaults follow `specs/done/schema-storage/spec.md` §2.6:
 
 - Required: `hosts` list
   - `id`, `uri`, optional `keyfile`
@@ -162,7 +162,7 @@ Router implementation uses `github.com/go-chi/chi/v5`.
 
 ### 5.2 API auth + setup routes
 
-Route contracts map to `specs/active/api-auth/spec.md`:
+Route contracts map to `specs/done/api-auth/spec.md`:
 
 - `POST /api/auth/login`
 - `POST /api/auth/logout`
@@ -186,7 +186,7 @@ Implementation notes:
   - Console (VNC, serial WebSocket): `specs/active/spec-console-realtime/spec.md`
   - Real-time (SSE status stream): `specs/active/spec-console-realtime/spec.md`
   - Templates (list, save VM as template): `specs/active/spec-template-management/spec.md`
-  - Preferences, hosts: `specs/active/api-auth/spec.md`
+  - Preferences, hosts: `specs/done/api-auth/spec.md`
 
 ## §6 Startup Sequence
 
@@ -207,7 +207,7 @@ Implementation notes:
 1. Create the parent directory of `db.path` if it does not exist.
    - Example for default path: `/var/lib/kui/kui.db` requires `/var/lib/kui`.
 2. Open SQLite at the effective `db.path`.
-3. Apply the canonical DDL from `specs/active/schema-storage/spec.md` §2.2 for:
+3. Apply the canonical DDL from `specs/done/schema-storage/spec.md` §2.2 for:
    - `users`,
    - `preferences`,
    - `vm_metadata`,
@@ -226,7 +226,7 @@ Implementation notes:
    - `audit/wizard/`
 4. If workspace initialization fails, fail fast: log the error and exit non-zero.
 
-Subdirectory requirements derive from `specs/active/schema-storage/spec.md` §2.4 and `specs/active/spec-audit-integration/spec.md` §4.1.
+Subdirectory requirements derive from `specs/done/schema-storage/spec.md` §2.4 and `specs/active/spec-audit-integration/spec.md` §4.1.
 
 ### 6.2 Setup startup
 
@@ -279,7 +279,7 @@ Canonical package responsibilities:
   - apply schema validation.
 - `internal/db`
   - open/close SQLite,
-  - initialize canonical schema from `specs/active/schema-storage/spec.md` §2.2.
+  - initialize canonical schema from `specs/done/schema-storage/spec.md` §2.2.
 - `internal/git`
   - initialize base path,
   - prepare `templates/` and `audit/` directories.
@@ -322,5 +322,5 @@ Canonical package responsibilities:
   - TLS optional + reverse-proxy-recommended guidance,
   - first-run setup behavior when config/DB/admin missing.
 - [x] Middleware order explicitly defined as request-id, logging, recovery, auth.
-- [x] Route set is aligned with `specs/active/api-auth/spec.md`.
-- [x] Config and env precedence are aligned with `specs/active/schema-storage/spec.md`.
+- [x] Route set is aligned with `specs/done/api-auth/spec.md`.
+- [x] Config and env precedence are aligned with `specs/done/schema-storage/spec.md`.

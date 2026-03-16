@@ -12,6 +12,7 @@ import {
   putPreferences,
   type Host,
   type Preferences,
+  type VM,
   type VMsResponse,
 } from "./lib/api";
 import { addAlert } from "./lib/alerts";
@@ -20,6 +21,8 @@ import {
   renderFirstRunChecklist,
   shouldShowChecklist,
 } from "./components/FirstRunChecklist";
+import { renderCreateVMModal } from "./components/CreateVMModal";
+import { renderCloneVMModal } from "./components/CloneVMModal";
 import { renderAlertsPanel } from "./components/AlertsPanel";
 import { renderHostSelector } from "./components/HostSelector";
 import { renderVMList } from "./components/VMList";
@@ -130,30 +133,69 @@ function renderMain(
   const content = document.createElement("main");
   content.className = "app-content";
 
+  const modalContainer = document.createElement("div");
+  modalContainer.id = "modal-root";
+
+  const openCreateModal = (): void => {
+    modalContainer.innerHTML = "";
+    renderCreateVMModal(modalContainer, {
+      hosts,
+      defaultHostId: selectedHostId,
+      onClose: () => {
+        modalContainer.innerHTML = "";
+      },
+      onSuccess: onDataChange,
+    });
+  };
+
+  const openCloneModal = (vm: VM): void => {
+    modalContainer.innerHTML = "";
+    renderCloneVMModal(modalContainer, {
+      sourceVM: vm,
+      hosts,
+      defaultHostId: selectedHostId,
+      onClose: () => {
+        modalContainer.innerHTML = "";
+      },
+      onSuccess: onDataChange,
+    });
+  };
+
+  const groupBy =
+    preferences?.list_view_options?.list_view?.group_by === "created_at"
+      ? "created_at"
+      : "last_access";
+
   if (shouldShowChecklist(vmsResp.vms, vmsResp.orphans, preferences)) {
     const checklistContainer = document.createElement("div");
     content.appendChild(checklistContainer);
-    renderFirstRunChecklist(checklistContainer, async () => {
-      const [vms, prefs, hostsResp] = await Promise.all([
-        apiFetch<VMsResponse>("/vms"),
-        apiFetch<Preferences>("/preferences"),
-        fetchHosts(),
-      ]);
-      renderMain(container, vms, prefs, hostsResp, onDataChange);
+    renderFirstRunChecklist(checklistContainer, {
+      onDismissed: async () => {
+        const [vms, prefs, hostsResp] = await Promise.all([
+          apiFetch<VMsResponse>("/vms"),
+          apiFetch<Preferences>("/preferences"),
+          fetchHosts(),
+        ]);
+        renderMain(container, vms, prefs, hostsResp, onDataChange);
+      },
+      onOpenCreateModal: openCreateModal,
     });
   } else {
     const vmListContainer = document.createElement("div");
     vmListContainer.className = "vm-list-container";
     renderVMList(vmListContainer, {
       data: vmsResp,
-      groupBy: "last_access",
+      groupBy,
       onRefresh: onDataChange,
       onOpenConsole: openConsoleForVM,
+      onOpenCreateModal: openCreateModal,
+      onOpenCloneModal: openCloneModal,
     });
     content.appendChild(vmListContainer);
   }
 
   layout.appendChild(content);
+  layout.appendChild(modalContainer);
   container.appendChild(layout);
 }
 

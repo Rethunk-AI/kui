@@ -15,10 +15,18 @@ export function shouldShowChecklist(
   return dismissed !== true;
 }
 
+export interface FirstRunChecklistProps {
+  onDismissed: () => void;
+  onOpenCreateModal?: () => void;
+}
+
 export function renderFirstRunChecklist(
   container: HTMLElement,
-  onDismissed: () => void
+  props: FirstRunChecklistProps | (() => void)
 ): void {
+  const onDismissed = typeof props === "function" ? props : props.onDismissed;
+  const onOpenCreateModal =
+    typeof props === "function" ? undefined : props.onOpenCreateModal;
   container.innerHTML = "";
   const section = document.createElement("section");
   section.className = "first-run-checklist";
@@ -34,6 +42,15 @@ export function renderFirstRunChecklist(
   `;
   section.appendChild(list);
 
+  const btnGroup = document.createElement("div");
+  btnGroup.className = "first-run-checklist__actions";
+  if (onOpenCreateModal) {
+    const createBtn = document.createElement("button");
+    createBtn.type = "button";
+    createBtn.textContent = "Create VM";
+    createBtn.addEventListener("click", onOpenCreateModal);
+    btnGroup.appendChild(createBtn);
+  }
   const dismissBtn = document.createElement("button");
   dismissBtn.type = "button";
   dismissBtn.textContent = "Dismiss";
@@ -48,7 +65,8 @@ export function renderFirstRunChecklist(
       addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);
     }
   });
-  section.appendChild(dismissBtn);
+  btnGroup.appendChild(dismissBtn);
+  section.appendChild(btnGroup);
 
   container.appendChild(section);
 }

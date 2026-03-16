@@ -88,6 +88,8 @@ export interface VMListProps {
   groupBy?: "last_access" | "created_at";
   onRefresh: () => void;
   onOpenConsole?: (vm: VM) => void;
+  onOpenCreateModal?: () => void;
+  onOpenCloneModal?: (vm: VM) => void;
 }
 
 export function renderVMList(
@@ -95,13 +97,35 @@ export function renderVMList(
   props: VMListProps
 ): void {
   container.innerHTML = "";
-  const { data, groupBy = "last_access", onRefresh, onOpenConsole } = props;
+  const {
+    data,
+    groupBy = "last_access",
+    onRefresh,
+    onOpenConsole,
+    onOpenCreateModal,
+    onOpenCloneModal,
+  } = props;
 
   const vmListEl = document.createElement("div");
   vmListEl.className = "vm-list";
 
+  const headerRow = document.createElement("div");
+  headerRow.className = "vm-list__header-row";
+  if (onOpenCreateModal) {
+    const createBtn = document.createElement("button");
+    createBtn.type = "button";
+    createBtn.className = "vm-list__btn vm-list__btn--create";
+    createBtn.textContent = "Create VM";
+    createBtn.addEventListener("click", onOpenCreateModal);
+    headerRow.appendChild(createBtn);
+  }
+  vmListEl.appendChild(headerRow);
+
   if (data.vms.length === 0 && data.orphans.length === 0) {
-    vmListEl.innerHTML = "<p class=\"vm-list__empty\">No VMs</p>";
+    const emptyP = document.createElement("p");
+    emptyP.className = "vm-list__empty";
+    emptyP.textContent = "No VMs";
+    vmListEl.appendChild(emptyP);
     container.appendChild(vmListEl);
     return;
   }
@@ -130,10 +154,15 @@ export function renderVMList(
             ${relTime ? `<span class="vm-list__rel-time">${escapeHtml(relTime)}</span>` : ""}
           </div>
           <div class="vm-list__row-actions">
+            ${onOpenCloneModal ? `<button type="button" class="vm-list__btn vm-list__btn--clone" title="Clone VM">Clone</button>` : ""}
             <button type="button" class="vm-list__btn vm-list__btn--console" data-host="${escapeAttr(vm.host_id)}" data-uuid="${escapeAttr(vm.libvirt_uuid)}" title="Open console">Console</button>
           </div>
         `;
 
+        const cloneBtn = li.querySelector(".vm-list__btn--clone");
+        if (cloneBtn && onOpenCloneModal) {
+          cloneBtn.addEventListener("click", () => onOpenCloneModal(vm));
+        }
         const consoleBtn = li.querySelector(".vm-list__btn--console");
         if (consoleBtn && onOpenConsole) {
           consoleBtn.addEventListener("click", () => {

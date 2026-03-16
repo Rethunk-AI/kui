@@ -112,3 +112,83 @@ export async function claimVM(
     ),
   });
 }
+
+export interface Pool {
+  name: string;
+  uuid: string;
+  state: string;
+}
+
+export interface Volume {
+  name: string;
+  path: string;
+  capacity: number;
+}
+
+export interface Network {
+  name: string;
+  uuid: string;
+  active: boolean;
+}
+
+export interface CreateVMRequest {
+  host_id: string;
+  pool: string;
+  disk: { name?: string; size_mb?: number };
+  cpu?: number;
+  ram_mb?: number;
+  network?: string;
+  display_name?: string;
+}
+
+export interface CreateVMResponse {
+  host_id: string;
+  libvirt_uuid: string;
+  display_name: string;
+  created_at: string;
+  status: string;
+}
+
+export async function createVM(req: CreateVMRequest): Promise<CreateVMResponse> {
+  return apiFetch<CreateVMResponse>("/vms", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export interface CloneVMRequest {
+  target_host_id: string;
+  target_pool: string;
+  target_name?: string;
+}
+
+export async function cloneVM(
+  sourceHostId: string,
+  sourceLibvirtUuid: string,
+  req: CloneVMRequest
+): Promise<CreateVMResponse> {
+  return apiFetch<CreateVMResponse>(
+    `/hosts/${encodeURIComponent(sourceHostId)}/vms/${encodeURIComponent(sourceLibvirtUuid)}/clone`,
+    {
+      method: "POST",
+      body: JSON.stringify(req),
+    }
+  );
+}
+
+export async function fetchHostPools(hostId: string): Promise<Pool[]> {
+  return apiFetch<Pool[]>(`/hosts/${encodeURIComponent(hostId)}/pools`);
+}
+
+export async function fetchHostPoolVolumes(
+  hostId: string,
+  poolName: string
+): Promise<Volume[]> {
+  return apiFetch<Volume[]>(
+    `/hosts/${encodeURIComponent(hostId)}/pools/${encodeURIComponent(poolName)}/volumes`
+  );
+}
+
+export async function fetchHostNetworks(hostId: string): Promise<Network[]> {
+  return apiFetch<Network[]>(`/hosts/${encodeURIComponent(hostId)}/networks`);
+}

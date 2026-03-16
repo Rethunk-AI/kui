@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -32,6 +33,7 @@ import (
 	"github.com/kui/kui/internal/libvirtconn"
 	mw "github.com/kui/kui/internal/middleware"
 	"github.com/kui/kui/internal/template"
+	"github.com/kui/kui/web"
 )
 
 type RouterOptions struct {
@@ -202,12 +204,10 @@ func NewRouter(opts RouterOptions) http.Handler {
 		SkipExactPaths: []string{"/", "/api/auth/login"},
 		SkipPrefixPaths: []string{
 			"/api/setup/",
+			"/assets/",
 		},
 	}))
 
-	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("KUI API"))
-	})
 	router.Post("/api/auth/login", state.login(sessionTimeout, secret, secureCookies))
 	router.Get("/api/setup/status", state.setupStatus())
 	router.Post("/api/setup/validate-host", state.validateHost())
@@ -238,7 +238,52 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Get("/api/templates", state.getTemplates())
 	router.Post("/api/templates", state.createTemplate())
 
+	webFS := resolveWebFS()
+	router.Get("/", staticHandler(webFS))
+	router.Get("/*", staticHandler(webFS))
+
 	return router
+}
+
+func resolveWebFS() http.FileSystem {
+	if dir := strings.TrimSpace(os.Getenv("KUI_WEB_DIR")); dir != "" {
+		return http.Dir(dir)
+	}
+	sub, err := fs.Sub(web.Dist, "dist")
+	if err != nil {
+		return nil
+	}
+	return http.FS(sub)
+}
+
+func staticHandler(f http.FileSystem) http.HandlerFunc {
+	if f == nil {
+		return func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "web assets not available", http.StatusServiceUnavailable)
+		}
+	}
+	fileServer := http.FileServer(f)
+	return func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if path == "/" {
+			path = "/index.html"
+		}
+		name := strings.TrimPrefix(path, "/")
+		file, err := f.Open(name)
+		if err == nil {
+			_ = file.Close()
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		index, err := f.Open("index.html")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		defer index.Close()
+		stat, _ := index.Stat()
+		http.ServeContent(w, r, "index.html", stat.ModTime(), index)
+	}
 }
 
 func (r *routerState) login(sessionTimeout time.Duration, secret string, secureCookies bool) http.HandlerFunc {

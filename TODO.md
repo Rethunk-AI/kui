@@ -19,16 +19,17 @@
 | spec_id | progress | blockers |
 |---------|----------|----------|
 | spec-audit-integration | spec ✓; impl MVP (wizard, auth) | — |
-| spec-vm-lifecycle-create | spec ✓; impl started (discovery) | — |
-| spec-frontend-build | spec ✓; impl 0% | — |
-| spec-template-management | spec ✓; impl 0% | spec-vm-lifecycle-create |
-| spec-console-realtime | spec ✓; impl 0% | spec-frontend-build |
+| spec-vm-lifecycle-create | spec ✓; impl DONE | — |
+| spec-frontend-build | spec ✓; impl DONE | — |
+| spec-template-management | spec ✓; impl DONE | — |
+| spec-console-realtime | spec ✓; impl 0% | — |
 | spec-ui-deployment | spec ✓; impl 0% | spec-console-realtime, spec-vm-lifecycle-create |
 
-### Done Specs (4)
+### Done Specs (5)
 
 | spec_id | status |
 |---------|--------|
+| spec-frontend-build | DONE — Vite, web/, embed, SPA fallback |
 | schema-storage | DONE — moved to specs/done/ |
 | spec-libvirt-connector | DONE — moved to specs/done/ |
 | spec-application-bootstrap | DONE — moved to specs/done/ |
@@ -122,3 +123,7 @@ spec-libvirt-connector (T4) ─┘
 **2026-03-16:** spec-vm-lifecycle-create T8a started. Added discovery endpoints: GET /api/hosts/{host_id}/pools, GET /api/hosts/{host_id}/pools/{pool_name}/volumes, GET /api/hosts/{host_id}/networks. Per spec §9.3.
 
 **2026-03-16:** spec-vm-lifecycle-create T8b–T8e complete. GET /api/vms (flat+orphans), VM detail+lifecycle (start/stop/pause/resume/destroy), POST create/clone/claim, PATCH config edit with vm_config_change audit.
+
+**2026-03-16:** spec-template-management complete. internal/template package, GET/POST /api/templates (list, save VM as template).
+
+**2026-03-16:** spec-frontend-build complete. Vite scaffold (web/), npm deps (noVNC, xterm, winbox), lib structure (api, console, winbox-adapter). Backend embed (web/embed.go), SPA fallback, KUI_WEB_DIR support. Makefile: `make all` builds web then Go.

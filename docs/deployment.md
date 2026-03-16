@@ -1,6 +1,6 @@
 # KUI Deployment
 
-This document covers TLS and reverse-proxy deployment for KUI. For systemd setup, see [deploy/systemd/README.md](../deploy/systemd/README.md).
+This document covers TLS and reverse-proxy deployment for KUI. For systemd setup, see [deploy/systemd/README.md](../deploy/systemd/README.md). For first-run setup and config, see [admin-guide.md](admin-guide.md).
 
 ## Service modes
 

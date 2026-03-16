@@ -1,0 +1,578 @@
+package routes
+
+import (
+	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/yaml.v3"
+
+	"github.com/kui/kui/internal/config"
+	"github.com/kui/kui/internal/db"
+	"github.com/kui/kui/internal/libvirtconn"
+	mw "github.com/kui/kui/internal/middleware"
+)
+
+type RouterOptions struct {
+	Logger       *slog.Logger
+	DB           *db.DB
+	Config       *config.Config
+	ConfigPath   string
+	ConfigPresent bool
+	DBPath       string
+	GitPath      string
+}
+
+type routerState struct {
+	logger        *slog.Logger
+	db            *db.DB
+	config        *config.Config
+	configPath    string
+	configPresent bool
+	dbPath        string
+	gitPath       string
+}
+
+type setupStatusResponse struct {
+	SetupRequired bool    `json:"setup_required"`
+	Reason        *string `json:"reason"`
+}
+
+type loginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type loginResponse struct {
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+type userRecord struct {
+	ID           string
+	Username     string
+	PasswordHash string
+	Role         string
+}
+
+type meResponse struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
+	Role     string `json:"role"`
+}
+
+type validateHostRequest struct {
+	HostID  string `json:"host_id"`
+	URI     string `json:"uri"`
+	Keyfile string `json:"keyfile"`
+}
+
+type validateHostResponse struct {
+	Valid bool   `json:"valid"`
+	Error string `json:"error,omitempty"`
+}
+
+type setupCompleteRequest struct {
+	Admin struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	} `json:"admin"`
+	Hosts []struct {
+		ID      string `json:"id"`
+		URI     string `json:"uri"`
+		Keyfile string `json:"keyfile"`
+	} `json:"hosts"`
+	DefaultHost string `json:"default_host"`
+}
+
+type setupPersistedConfig struct {
+	Hosts             []config.Host `yaml:"hosts"`
+	DefaultHost       string        `yaml:"default_host"`
+	Session           sessionConfig `yaml:"session"`
+	JWTSecret         string        `yaml:"jwt_secret"`
+	DB                dbPathConfig  `yaml:"db"`
+	Git               gitPathConfig `yaml:"git"`
+	DefaultNameTemplate string      `yaml:"default_name_template"`
+}
+
+type sessionConfig struct {
+	Timeout string `yaml:"timeout"`
+}
+
+type dbPathConfig struct {
+	Path string `yaml:"path"`
+}
+
+type gitPathConfig struct {
+	Path string `yaml:"path"`
+}
+
+type jwtClaims struct {
+	jwt.RegisteredClaims
+	Username string `json:"username"`
+	Role     string `json:"role"`
+}
+
+func NewRouter(opts RouterOptions) http.Handler {
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	state := &routerState{
+		logger:         logger,
+		db:             opts.DB,
+		config:         opts.Config,
+		configPath:     opts.ConfigPath,
+		configPresent:  opts.ConfigPresent,
+		dbPath:         opts.DBPath,
+		gitPath:        opts.GitPath,
+	}
+
+	sessionTimeout := 24 * time.Hour
+	secret := ""
+	if opts.Config != nil {
+		sessionTimeout = time.Duration(opts.Config.Session.Timeout)
+		secret = opts.Config.JWTSecret
+	}
+
+	router := chi.NewRouter()
+	router.Use(mw.RequestID())
+	router.Use(mw.Logging(logger))
+	router.Use(mw.Recovery(logger))
+	router.Use(mw.Auth(secret, mw.AuthOptions{
+		SkipExactPaths: []string{"/", "/api/auth/login"},
+		SkipPrefixPaths: []string{
+			"/api/setup/",
+		},
+	}))
+
+	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("KUI API"))
+	})
+	router.Post("/api/auth/login", state.login(sessionTimeout, secret))
+	router.Get("/api/setup/status", state.setupStatus())
+	router.Post("/api/setup/validate-host", state.validateHost())
+	router.Post("/api/setup/complete", state.setupComplete())
+	router.Post("/api/auth/logout", state.logout())
+	router.Get("/api/auth/me", state.me())
+
+	return router
+}
+
+func (r *routerState) login(sessionTimeout time.Duration, secret string) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if secret == "" {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		var payload loginRequest
+		if err := decodeJSON(req.Body, &payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "username and password required")
+			return
+		}
+		if strings.TrimSpace(payload.Username) == "" || strings.TrimSpace(payload.Password) == "" {
+			writeJSONError(w, http.StatusBadRequest, "username and password required")
+			return
+		}
+
+		record, err := r.findUserByUsername(req.Context(), payload.Username)
+		if err != nil {
+			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
+			return
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(record.PasswordHash), []byte(payload.Password)); err != nil {
+			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
+			return
+		}
+
+		now := time.Now().UTC()
+		expiresAt := now.Add(sessionTimeout)
+		token, err := signJWT(record, now, expiresAt, secret)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to sign token")
+			return
+		}
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     mw.SessionCookieName,
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   req.TLS != nil,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   int(sessionTimeout.Seconds()),
+			Expires:  expiresAt,
+		})
+		writeJSON(w, http.StatusOK, loginResponse{
+			Token:     token,
+			ExpiresAt: expiresAt.Format(time.RFC3339),
+		})
+	}
+}
+
+func (r *routerState) logout() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		http.SetCookie(w, &http.Cookie{
+			Name:     mw.SessionCookieName,
+			Value:    "",
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   -1,
+		})
+		w.WriteHeader(http.StatusOK)
+		_ = req
+	}
+}
+
+func (r *routerState) me() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		user, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		writeJSON(w, http.StatusOK, meResponse{
+			ID:       user.ID,
+			Username: user.Username,
+			Role:     user.Role,
+		})
+	}
+}
+
+func (r *routerState) setupStatus() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		var reason *string
+
+		if !r.configPresent || r.config == nil {
+			value := "config_missing"
+			reason = &value
+		} else {
+			hasAdmin, err := r.hasAdminUser(req.Context())
+			if err != nil {
+				writeJSONError(w, http.StatusInternalServerError, "failed to evaluate setup status")
+				return
+			}
+			if !hasAdmin {
+				value := "no_admin"
+				reason = &value
+			}
+		}
+
+		writeJSON(w, http.StatusOK, setupStatusResponse{
+			SetupRequired: reason != nil,
+			Reason:        reason,
+		})
+	}
+}
+
+func (r *routerState) validateHost() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		var payload validateHostRequest
+		if err := decodeJSON(req.Body, &payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if strings.TrimSpace(payload.URI) == "" {
+			writeJSONError(w, http.StatusBadRequest, "uri required")
+			return
+		}
+
+		conn, err := libvirtconn.Connect(req.Context(), payload.URI, payload.Keyfile)
+		if err != nil {
+			writeJSON(w, http.StatusOK, validateHostResponse{
+				Valid: false,
+				Error: err.Error(),
+			})
+			return
+		}
+		if err := conn.Close(); err != nil {
+			writeJSON(w, http.StatusOK, validateHostResponse{
+				Valid: false,
+				Error: err.Error(),
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, validateHostResponse{
+			Valid: true,
+		})
+	}
+}
+
+func (r *routerState) setupComplete() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		var payload setupCompleteRequest
+		if err := decodeJSON(req.Body, &payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		if strings.TrimSpace(payload.Admin.Username) == "" {
+			writeJSONError(w, http.StatusBadRequest, "admin username required")
+			return
+		}
+		if strings.TrimSpace(payload.Admin.Password) == "" {
+			writeJSONError(w, http.StatusBadRequest, "admin password required")
+			return
+		}
+		if len(payload.Hosts) == 0 {
+			writeJSONError(w, http.StatusBadRequest, "at least one host is required")
+			return
+		}
+		if strings.TrimSpace(payload.DefaultHost) == "" {
+			writeJSONError(w, http.StatusBadRequest, "default_host required")
+			return
+		}
+
+		hosts, ok := normalizeHosts(payload.Hosts)
+		if !ok {
+			writeJSONError(w, http.StatusBadRequest, "invalid host payload")
+			return
+		}
+		if !containsHost(hosts, payload.DefaultHost) {
+			writeJSONError(w, http.StatusBadRequest, "default_host must be in hosts")
+			return
+		}
+
+		hasAdmin, err := r.hasAdminUser(req.Context())
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to evaluate setup state")
+			return
+		}
+		if r.configPresent && hasAdmin {
+			writeJSONError(w, http.StatusConflict, "setup already complete")
+			return
+		}
+
+		passwordHash, err := bcrypt.GenerateFromPassword([]byte(payload.Admin.Password), bcrypt.DefaultCost)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to prepare credentials")
+			return
+		}
+
+		now := time.Now().UTC().Format(time.RFC3339)
+		userID, err := randomUUID()
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to create admin user")
+			return
+		}
+		if _, err := r.db.SQL.ExecContext(
+			req.Context(),
+			`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			userID, strings.TrimSpace(payload.Admin.Username), string(passwordHash), "admin", now, now,
+		); err != nil {
+			writeJSONError(w, http.StatusConflict, "admin user already exists")
+			return
+		}
+
+		jwtSecret, err := randomSecret(32)
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to generate jwt secret")
+			return
+		}
+
+		persist := setupPersistedConfig{
+			Hosts:               hosts,
+			DefaultHost:         payload.DefaultHost,
+			Session:             sessionConfig{Timeout: "24h"},
+			JWTSecret:           jwtSecret,
+			DB:                  dbPathConfig{Path: r.configuredDBPath()},
+			Git:                 gitPathConfig{Path: r.configuredGitPath()},
+			DefaultNameTemplate: "{source}",
+		}
+		if err := writeConfigFile(r.configPath, persist); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to write config")
+			return
+		}
+		if err := os.Chmod(r.configPath, 0o444); err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to update config permissions")
+			return
+		}
+
+		w.WriteHeader(http.StatusCreated)
+	}
+}
+
+func (r *routerState) findUserByUsername(ctx context.Context, username string) (userRecord, error) {
+	if r.db == nil || r.db.SQL == nil {
+		return userRecord{}, errors.New("database not initialized")
+	}
+
+	var record userRecord
+	err := r.db.SQL.QueryRowContext(ctx, `
+SELECT id, username, password_hash, role
+  FROM users
+ WHERE username = ?`, username).Scan(&record.ID, &record.Username, &record.PasswordHash, &record.Role)
+	if err == sql.ErrNoRows {
+		return userRecord{}, errors.New("user not found")
+	}
+	return record, err
+}
+
+func (r *routerState) hasAdminUser(ctx context.Context) (bool, error) {
+	var count int
+	if err := r.db.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (r *routerState) configuredDBPath() string {
+	if strings.TrimSpace(r.dbPath) != "" {
+		return r.dbPath
+	}
+	return "/var/lib/kui/kui.db"
+}
+
+func (r *routerState) configuredGitPath() string {
+	if strings.TrimSpace(r.gitPath) != "" {
+		return r.gitPath
+	}
+	return "/var/lib/kui"
+}
+
+func decodeJSON(body io.Reader, target any) error {
+	return json.NewDecoder(body).Decode(target)
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "failed to encode response")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(raw)
+}
+
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{
+		"error": message,
+	})
+}
+
+func normalizeHosts(in []struct {
+	ID      string `json:"id"`
+	URI     string `json:"uri"`
+	Keyfile string `json:"keyfile"`
+}) ([]config.Host, bool) {
+	seen := map[string]struct{}{}
+	out := make([]config.Host, 0, len(in))
+
+	for _, host := range in {
+		id := strings.TrimSpace(host.ID)
+		uri := strings.TrimSpace(host.URI)
+		keyfile := strings.TrimSpace(host.Keyfile)
+
+		if id == "" || uri == "" {
+			return nil, false
+		}
+		if strings.HasPrefix(uri, "qemu+ssh://") && keyfile == "" {
+			return nil, false
+		}
+		if _, exists := seen[id]; exists {
+			return nil, false
+		}
+		seen[id] = struct{}{}
+
+		var pointer *string
+		if keyfile != "" {
+			pointer = &keyfile
+		}
+		out = append(out, config.Host{
+			ID:      id,
+			URI:     uri,
+			Keyfile: pointer,
+		})
+	}
+
+	return out, true
+}
+
+func containsHost(hosts []config.Host, id string) bool {
+	for _, host := range hosts {
+		if host.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func randomSecret(size int) (string, error) {
+	secret := make([]byte, size)
+	if _, err := rand.Read(secret); err != nil {
+		return "", err
+	}
+	return base64.RawStdEncoding.EncodeToString(secret), nil
+}
+
+func randomUUID() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+
+	raw[6] = (raw[6] & 0x0f) | 0x40
+	raw[8] = (raw[8] & 0x3f) | 0x80
+
+	return fmt.Sprintf(
+		"%s-%s-%s-%s-%s",
+		hex.EncodeToString(raw[:4]),
+		hex.EncodeToString(raw[4:6]),
+		hex.EncodeToString(raw[6:8]),
+		hex.EncodeToString(raw[8:10]),
+		hex.EncodeToString(raw[10:]),
+	), nil
+}
+
+func writeConfigFile(path string, payload any) error {
+	raw, err := yaml.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
+		return fmt.Errorf("write config temp file: %w", err)
+	}
+	return os.Rename(tmp, path)
+}
+
+func signJWT(user userRecord, now time.Time, expiresAt time.Time, secret string) (string, error) {
+	claims := jwtClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   user.ID,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+		},
+		Username: user.Username,
+		Role:     user.Role,
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(secret))
+}
+

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -128,6 +129,33 @@ func (d *DB) ListVMMetadata(ctx context.Context) ([]VMMetadataRow, error) {
 		return nil, fmt.Errorf("iterate vm_metadata: %w", err)
 	}
 	return out, nil
+}
+
+// GetVMMetadata returns the vm_metadata row for the given host_id and libvirt_uuid, or nil if not found.
+func (d *DB) GetVMMetadata(ctx context.Context, hostID, libvirtUUID string) (*VMMetadataRow, error) {
+	var r VMMetadataRow
+	var claimed int
+	err := d.SQL.QueryRowContext(ctx, `SELECT host_id, libvirt_uuid, claimed, display_name, console_preference, last_access, created_at, updated_at FROM vm_metadata WHERE host_id = ? AND libvirt_uuid = ?`,
+		hostID, libvirtUUID).Scan(&r.HostID, &r.LibvirtUUID, &claimed, &r.DisplayName, &r.ConsolePreference, &r.LastAccess, &r.CreatedAt, &r.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get vm_metadata: %w", err)
+	}
+	r.Claimed = claimed != 0
+	return &r, nil
+}
+
+// UpdateVMMetadataLastAccess sets last_access to now for the given host_id and libvirt_uuid.
+func (d *DB) UpdateVMMetadataLastAccess(ctx context.Context, hostID, libvirtUUID string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := d.SQL.ExecContext(ctx, `UPDATE vm_metadata SET last_access = ?, updated_at = ? WHERE host_id = ? AND libvirt_uuid = ?`,
+		now, now, hostID, libvirtUUID)
+	if err != nil {
+		return fmt.Errorf("update vm_metadata last_access: %w", err)
+	}
+	return nil
 }
 
 func initSchema(sqlDB *sql.DB) error {

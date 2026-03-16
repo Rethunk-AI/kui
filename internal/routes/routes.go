@@ -220,6 +220,13 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Get("/api/hosts/{host_id}/pools/{pool_name}/volumes", state.getHostPoolVolumes())
 	router.Get("/api/hosts/{host_id}/networks", state.getHostNetworks())
 
+	router.Get("/api/hosts/{host_id}/vms/{libvirt_uuid}", state.getVMDetail())
+	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/start", state.vmStart())
+	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/stop", state.vmStop())
+	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/pause", state.vmPause())
+	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/resume", state.vmResume())
+	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/destroy", state.vmDestroy())
+
 	return router
 }
 
@@ -608,6 +615,206 @@ func (r *routerState) getVMs() http.HandlerFunc {
 			}
 		}
 		writeJSON(w, http.StatusOK, vmListResponse{VMs: vms, Hosts: hosts, Orphans: orphans})
+	}
+}
+
+type vmDetailResponse struct {
+	HostID            string  `json:"host_id"`
+	LibvirtUUID       string  `json:"libvirt_uuid"`
+	DisplayName       *string `json:"display_name"`
+	Claimed           bool    `json:"claimed"`
+	Status            string  `json:"status"`
+	ConsolePreference *string `json:"console_preference"`
+	LastAccess        *string `json:"last_access"`
+	CreatedAt         string  `json:"created_at"`
+	UpdatedAt        string  `json:"updated_at"`
+}
+
+func (r *routerState) getVMDetail() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		_, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		hostID := chi.URLParam(req, "host_id")
+		libvirtUUID := chi.URLParam(req, "libvirt_uuid")
+		if hostID == "" || libvirtUUID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id and libvirt_uuid required")
+			return
+		}
+		meta, err := r.db.GetVMMetadata(req.Context(), hostID, libvirtUUID)
+		if err != nil {
+			r.logger.Error("get vm_metadata failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to get VM")
+			return
+		}
+		if meta == nil || !meta.Claimed {
+			writeJSONError(w, http.StatusNotFound, "VM not found")
+			return
+		}
+		conn, err := r.getConnectorForHost(req.Context(), hostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		domainInfo, err := conn.LookupByUUID(req.Context(), libvirtUUID)
+		if err != nil {
+			r.logger.Error("lookup domain failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
+			writeJSONError(w, http.StatusNotFound, "VM not found")
+			return
+		}
+		if err := r.db.UpdateVMMetadataLastAccess(req.Context(), hostID, libvirtUUID); err != nil {
+			r.logger.Error("update last_access failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
+		}
+		displayName := domainInfo.Name
+		if meta.DisplayName.Valid && meta.DisplayName.String != "" {
+			displayName = meta.DisplayName.String
+		}
+		var consolePref, lastAccess *string
+		if meta.ConsolePreference.Valid {
+			cp := meta.ConsolePreference.String
+			consolePref = &cp
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		lastAccess = &now
+		writeJSON(w, http.StatusOK, vmDetailResponse{
+			HostID:            hostID,
+			LibvirtUUID:       libvirtUUID,
+			DisplayName:       &displayName,
+			Claimed:           true,
+			Status:            string(domainInfo.State),
+			ConsolePreference: consolePref,
+			LastAccess:        lastAccess,
+			CreatedAt:         meta.CreatedAt,
+			UpdatedAt:         now,
+		})
+	}
+}
+
+func (r *routerState) vmLifecycleOp(op string, fn func(conn libvirtconn.Connector, ctx context.Context, uuid string) error) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		_, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		hostID := chi.URLParam(req, "host_id")
+		libvirtUUID := chi.URLParam(req, "libvirt_uuid")
+		if hostID == "" || libvirtUUID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id and libvirt_uuid required")
+			return
+		}
+		meta, err := r.db.GetVMMetadata(req.Context(), hostID, libvirtUUID)
+		if err != nil || meta == nil || !meta.Claimed {
+			writeJSONError(w, http.StatusNotFound, "VM not found")
+			return
+		}
+		conn, err := r.getConnectorForHost(req.Context(), hostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		if err := fn(conn, req.Context(), libvirtUUID); err != nil {
+			r.logger.Error(op+" failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, op+" failed")
+			return
+		}
+		state, _ := conn.GetState(req.Context(), libvirtUUID)
+		writeJSON(w, http.StatusOK, map[string]string{"status": string(state)})
+	}
+}
+
+func (r *routerState) vmStart() http.HandlerFunc {
+	return r.vmLifecycleOp("start", func(conn libvirtconn.Connector, ctx context.Context, uuid string) error {
+		return conn.Create(ctx, uuid)
+	})
+}
+
+func (r *routerState) vmPause() http.HandlerFunc {
+	return r.vmLifecycleOp("pause", func(conn libvirtconn.Connector, ctx context.Context, uuid string) error {
+		return conn.Suspend(ctx, uuid)
+	})
+}
+
+func (r *routerState) vmResume() http.HandlerFunc {
+	return r.vmLifecycleOp("resume", func(conn libvirtconn.Connector, ctx context.Context, uuid string) error {
+		return conn.Resume(ctx, uuid)
+	})
+}
+
+func (r *routerState) vmDestroy() http.HandlerFunc {
+	return r.vmLifecycleOp("destroy", func(conn libvirtconn.Connector, ctx context.Context, uuid string) error {
+		return conn.Destroy(ctx, uuid)
+	})
+}
+
+func (r *routerState) vmStop() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		_, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		hostID := chi.URLParam(req, "host_id")
+		libvirtUUID := chi.URLParam(req, "libvirt_uuid")
+		if hostID == "" || libvirtUUID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id and libvirt_uuid required")
+			return
+		}
+		meta, err := r.db.GetVMMetadata(req.Context(), hostID, libvirtUUID)
+		if err != nil || meta == nil || !meta.Claimed {
+			writeJSONError(w, http.StatusNotFound, "VM not found")
+			return
+		}
+		conn, err := r.getConnectorForHost(req.Context(), hostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		timeout := 30 * time.Second
+		if r.config != nil && r.config.VMLifecycle.GracefulStopTimeout > 0 {
+			timeout = time.Duration(r.config.VMLifecycle.GracefulStopTimeout)
+		}
+		if err := conn.Shutdown(req.Context(), libvirtUUID); err != nil {
+			r.logger.Error("stop failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "stop failed")
+			return
+		}
+		deadline := time.Now().Add(timeout)
+		for time.Now().Before(deadline) {
+			state, err := conn.GetState(req.Context(), libvirtUUID)
+			if err != nil {
+				break
+			}
+			if state == libvirtconn.DomainStateShutoff {
+				writeJSON(w, http.StatusOK, map[string]string{"status": string(state)})
+				return
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+		if err := conn.Destroy(req.Context(), libvirtUUID); err != nil {
+			r.logger.Error("force stop failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "stop failed")
+			return
+		}
+		state, _ := conn.GetState(req.Context(), libvirtUUID)
+		writeJSON(w, http.StatusOK, map[string]string{"status": string(state)})
 	}
 }
 

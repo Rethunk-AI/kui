@@ -14,24 +14,25 @@
 | Spec integrity | pass |
 | Doc integrity | pass |
 
-### Active Specs (10)
+### Active Specs (7)
 
 | spec_id | progress | blockers |
 |---------|----------|----------|
-| schema-storage | spec ✓; impl 0% | — |
-| spec-libvirt-connector | spec ✓; impl 0% | — |
-| spec-application-bootstrap | spec ✓; impl 0% | schema-storage |
-| api-auth | spec ✓; impl 0% | schema-storage, spec-libvirt-connector |
-| spec-audit-integration | spec ✓; impl 0% | schema-storage, spec-application-bootstrap, api-auth |
-| spec-vm-lifecycle-create | spec ✓; impl 0% | spec-libvirt-connector, schema-storage, spec-application-bootstrap, spec-audit-integration |
-| spec-frontend-build | spec ✓; impl 0% | spec-application-bootstrap |
-| spec-template-management | spec ✓; impl 0% | schema-storage, spec-vm-lifecycle-create, spec-libvirt-connector, spec-audit-integration, spec-application-bootstrap |
-| spec-console-realtime | spec ✓; impl 0% | spec-application-bootstrap, spec-libvirt-connector, spec-frontend-build, api-auth |
-| spec-ui-deployment | spec ✓; impl 0% | spec-application-bootstrap, api-auth, spec-frontend-build, spec-console-realtime, spec-vm-lifecycle-create |
+| api-auth | spec ✓; impl 0% | — |
+| spec-audit-integration | spec ✓; impl 0% | api-auth |
+| spec-vm-lifecycle-create | spec ✓; impl 0% | spec-audit-integration |
+| spec-frontend-build | spec ✓; impl 0% | — |
+| spec-template-management | spec ✓; impl 0% | spec-vm-lifecycle-create |
+| spec-console-realtime | spec ✓; impl 0% | spec-frontend-build, api-auth |
+| spec-ui-deployment | spec ✓; impl 0% | spec-console-realtime, spec-vm-lifecycle-create |
 
-### Done Specs
+### Done Specs (3)
 
-None (greenfield).
+| spec_id | status |
+|---------|--------|
+| schema-storage | DONE — moved to specs/done/ |
+| spec-libvirt-connector | DONE — moved to specs/done/ |
+| spec-application-bootstrap | DONE — moved to specs/done/ |
 
 ---
 
@@ -60,13 +61,12 @@ Deferred until foundation and core complete.
 
 ---
 
-## Security Audit Findings (2026-03-16)
+## Security Audit Findings (2026-03-16) — RESOLVED
 
-See security-auditor run. Summary:
-- **High:** Config file chmod 0444 exposes JWT secret; setup/complete can recreate admin when DB has no users
-- **Medium:** validate-host leaks URI/errors; session cookie Secure behind proxy; no login rate limiting
-- **Low:** jwt_secret not required in normal mode
-- **Positive:** bcrypt for passwords; parameterized SQL; no secrets in examples
+All findings addressed:
+- **High:** Config chmod 0o600; setup/complete only when config missing + setupCompleted flag
+- **Medium:** validate-host setup-only + sanitized errors; secure cookies config; login rate limit
+- **Low:** jwt_secret required in normal mode
 
 ---
 

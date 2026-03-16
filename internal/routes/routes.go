@@ -215,6 +215,10 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Put("/api/preferences", state.putPreferences())
 	router.Get("/api/hosts", state.getHosts())
 
+	router.Get("/api/hosts/{host_id}/pools", state.getHostPools())
+	router.Get("/api/hosts/{host_id}/pools/{pool_name}/volumes", state.getHostPoolVolumes())
+	router.Get("/api/hosts/{host_id}/networks", state.getHostNetworks())
+
 	return router
 }
 
@@ -497,6 +501,153 @@ func (r *routerState) getHosts() http.HandlerFunc {
 		out := make([]hostResponse, 0, len(r.config.Hosts))
 		for _, h := range r.config.Hosts {
 			out = append(out, hostResponse{ID: h.ID, URI: h.URI})
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+type poolResponse struct {
+	Name  string `json:"name"`
+	UUID  string `json:"uuid"`
+	State string `json:"state"`
+}
+
+type volumeResponse struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	Capacity uint64 `json:"capacity"`
+}
+
+type networkResponse struct {
+	Name   string `json:"name"`
+	UUID   string `json:"uuid"`
+	Active bool   `json:"active"`
+}
+
+func (r *routerState) getConnectorForHost(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+	if r.config == nil || len(r.config.Hosts) == 0 {
+		return nil, errors.New("no hosts configured")
+	}
+	for _, h := range r.config.Hosts {
+		if h.ID == hostID {
+			keyfile := ""
+			if h.Keyfile != nil {
+				keyfile = *h.Keyfile
+			}
+			return libvirtconn.Connect(ctx, h.URI, keyfile)
+		}
+	}
+	return nil, errors.New("host not found")
+}
+
+func (r *routerState) getHostPools() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		_, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		hostID := chi.URLParam(req, "host_id")
+		if hostID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id required")
+			return
+		}
+		conn, err := r.getConnectorForHost(req.Context(), hostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		pools, err := conn.ListPools(req.Context())
+		if err != nil {
+			r.logger.Error("list pools failed", "host_id", hostID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to list pools")
+			return
+		}
+		out := make([]poolResponse, 0, len(pools))
+		for _, p := range pools {
+			state := "inactive"
+			if p.Active {
+				state = "active"
+			}
+			out = append(out, poolResponse{Name: p.Name, UUID: p.UUID, State: state})
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+func (r *routerState) getHostPoolVolumes() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		_, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		hostID := chi.URLParam(req, "host_id")
+		poolName := chi.URLParam(req, "pool_name")
+		if hostID == "" || poolName == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id and pool_name required")
+			return
+		}
+		conn, err := r.getConnectorForHost(req.Context(), hostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		volumes, err := conn.ListVolumes(req.Context(), poolName)
+		if err != nil {
+			r.logger.Error("list volumes failed", "host_id", hostID, "pool", poolName, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to list volumes")
+			return
+		}
+		out := make([]volumeResponse, 0, len(volumes))
+		for _, v := range volumes {
+			out = append(out, volumeResponse{Name: v.Name, Path: v.Path, Capacity: v.Capacity})
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+func (r *routerState) getHostNetworks() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		_, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		hostID := chi.URLParam(req, "host_id")
+		if hostID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id required")
+			return
+		}
+		conn, err := r.getConnectorForHost(req.Context(), hostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		networks, err := conn.ListNetworks(req.Context())
+		if err != nil {
+			r.logger.Error("list networks failed", "host_id", hostID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to list networks")
+			return
+		}
+		out := make([]networkResponse, 0, len(networks))
+		for _, n := range networks {
+			out = append(out, networkResponse{Name: n.Name, UUID: n.UUID, Active: n.Active})
 		}
 		writeJSON(w, http.StatusOK, out)
 	}

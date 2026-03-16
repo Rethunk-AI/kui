@@ -422,3 +422,39 @@ cors:
 		t.Fatalf("expected CORS header, got %q", rec.Header().Get("Access-Control-Allow-Origin"))
 	}
 }
+
+func TestDiscoveryEndpoints_RequireAuth(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        nil,
+		ConfigPath:    filepath.Join(tempDir, "config.yaml"),
+		ConfigPresent: false,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	tests := []struct {
+		path string
+	}{
+		{"/api/hosts/local/pools"},
+		{"/api/hosts/local/pools/default/volumes"},
+		{"/api/hosts/local/networks"},
+	}
+	for _, tt := range tests {
+		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("GET %s: expected 401 without auth, got %d", tt.path, rec.Code)
+		}
+	}
+}

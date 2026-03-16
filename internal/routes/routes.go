@@ -245,13 +245,13 @@ func (r *routerState) login(sessionTimeout time.Duration, secret string, secureC
 		record, err := r.findUserByUsername(req.Context(), payload.Username)
 		if err != nil {
 			loginLimiter.recordFailure(clientIP)
-			r.logger.Warn("login failed", "ip", clientIP, "username", payload.Username)
+			r.logger.Warn("login failed", "ip", clientIP)
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
 		if err := bcrypt.CompareHashAndPassword([]byte(record.PasswordHash), []byte(payload.Password)); err != nil {
 			loginLimiter.recordFailure(clientIP)
-			r.logger.Warn("login failed", "ip", clientIP, "username", payload.Username)
+			r.logger.Warn("login failed", "ip", clientIP)
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
@@ -498,7 +498,7 @@ func (r *routerState) validateHost() http.HandlerFunc {
 
 		conn, err := libvirtconn.Connect(req.Context(), payload.URI, payload.Keyfile)
 		if err != nil {
-			r.logger.Debug("validate-host failed", "host_id", payload.HostID, "err", err)
+			r.logger.Debug("validate-host failed", "host_id", payload.HostID)
 			writeJSON(w, http.StatusOK, validateHostResponse{
 				Valid: false,
 				Error: "validation failed",
@@ -506,7 +506,7 @@ func (r *routerState) validateHost() http.HandlerFunc {
 			return
 		}
 		if err := conn.Close(); err != nil {
-			r.logger.Debug("validate-host close failed", "host_id", payload.HostID, "err", err)
+			r.logger.Debug("validate-host close failed", "host_id", payload.HostID)
 			writeJSON(w, http.StatusOK, validateHostResponse{
 				Valid: false,
 				Error: "validation failed",
@@ -563,6 +563,10 @@ func (r *routerState) setupComplete() http.HandlerFunc {
 			return
 		}
 		if r.configPresent {
+			writeJSONError(w, http.StatusConflict, "setup already complete")
+			return
+		}
+		if _, statErr := os.Stat(r.configPath); statErr == nil {
 			writeJSONError(w, http.StatusConflict, "setup already complete")
 			return
 		}

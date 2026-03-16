@@ -236,6 +236,7 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Post("/api/vms", state.createVM())
 
 	router.Get("/api/templates", state.getTemplates())
+	router.Post("/api/templates", state.createTemplate())
 
 	return router
 }
@@ -1372,13 +1373,290 @@ func (r *routerState) getTemplates() http.HandlerFunc {
 }
 
 type templateListItem struct {
-	TemplateID string           `json:"template_id"`
-	Name       string           `json:"name"`
+	TemplateID string             `json:"template_id"`
+	Name       string             `json:"name"`
 	BaseImage  template.BaseImage `json:"base_image"`
-	CPU        int              `json:"cpu"`
-	RAMMB      int              `json:"ram_mb"`
-	Network    string           `json:"network"`
-	CreatedAt  string           `json:"created_at"`
+	CPU        int                `json:"cpu"`
+	RAMMB      int                `json:"ram_mb"`
+	Network    string             `json:"network"`
+	CreatedAt  string             `json:"created_at"`
+}
+
+type createTemplateRequest struct {
+	SourceHostID    string `json:"source_host_id"`
+	SourceLibvirtUUID string `json:"source_libvirt_uuid"`
+	Name            string `json:"name"`
+	TargetPool      string `json:"target_pool"`
+}
+
+type createTemplateResponse struct {
+	TemplateID string             `json:"template_id"`
+	Name       string             `json:"name"`
+	BaseImage  template.BaseImage `json:"base_image"`
+	CreatedAt  string             `json:"created_at"`
+}
+
+func (r *routerState) createTemplate() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		user, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		gitBase := r.configuredGitPath()
+		if gitBase == "" {
+			writeJSONError(w, http.StatusServiceUnavailable, "git path not configured")
+			return
+		}
+		var payload createTemplateRequest
+		if err := decodeJSON(req.Body, &payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		sourceHostID := strings.TrimSpace(payload.SourceHostID)
+		sourceUUID := strings.TrimSpace(payload.SourceLibvirtUUID)
+		name := strings.TrimSpace(payload.Name)
+		if sourceHostID == "" || sourceUUID == "" || name == "" {
+			writeJSONError(w, http.StatusBadRequest, "source_host_id, source_libvirt_uuid, and name are required")
+			return
+		}
+		templateID := template.Slugify(name)
+		if templateID == "" {
+			writeJSONError(w, http.StatusBadRequest, "name must produce a valid template_id")
+			return
+		}
+		exists, err := template.TemplateExists(gitBase, templateID)
+		if err != nil {
+			r.logger.Error("check template exists failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create template")
+			return
+		}
+		if exists {
+			writeJSONError(w, http.StatusConflict, "template already exists")
+			return
+		}
+		conn, err := r.getConnectorForHost(req.Context(), sourceHostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		state, err := conn.GetState(req.Context(), sourceUUID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "source VM not found")
+			return
+		}
+		if state != libvirtconn.DomainStateShutoff {
+			writeJSONError(w, http.StatusConflict, "source VM must be stopped to save as template")
+			return
+		}
+		domainXML, err := conn.GetDomainXML(req.Context(), sourceUUID)
+		if err != nil {
+			r.logger.Error("get domain XML failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create template")
+			return
+		}
+		diskPath := extractFirstDiskPath(domainXML)
+		if diskPath == "" {
+			writeJSONError(w, http.StatusBadRequest, "could not determine source disk")
+			return
+		}
+		pools, err := conn.ListPools(req.Context())
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to list pools")
+			return
+		}
+		var sourceVolName, sourcePoolName string
+		for _, p := range pools {
+			vols, err := conn.ListVolumes(req.Context(), p.Name)
+			if err != nil {
+				continue
+			}
+			for _, v := range vols {
+				if v.Path == diskPath {
+					sourceVolName = v.Name
+					sourcePoolName = p.Name
+					break
+				}
+			}
+			if sourceVolName != "" {
+				break
+			}
+		}
+		if sourceVolName == "" {
+			writeJSONError(w, http.StatusBadRequest, "source disk not found in any pool")
+			return
+		}
+		targetPool := strings.TrimSpace(payload.TargetPool)
+		if targetPool == "" && r.config.TemplateStorage != nil {
+			targetPool = strings.TrimSpace(*r.config.TemplateStorage)
+		}
+		if targetPool == "" {
+			targetPool = sourcePoolName
+		}
+		if err := conn.ValidatePool(req.Context(), targetPool); err != nil {
+			r.logger.Error("validate target pool failed", "pool", targetPool, "error", err)
+			writeJSONError(w, http.StatusServiceUnavailable, "target pool invalid or inactive")
+			return
+		}
+		domainInfo, _ := conn.LookupByUUID(req.Context(), sourceUUID)
+		diskName := domainInfo.Name + ".qcow2"
+		var targetDiskPath string
+		if sourcePoolName == targetPool {
+			if err := conn.CloneVolume(req.Context(), targetPool, sourceVolName, diskName); err != nil {
+				r.logger.Error("clone volume failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to copy disk")
+				return
+			}
+			vols, _ := conn.ListVolumes(req.Context(), targetPool)
+			for _, v := range vols {
+				if v.Name == diskName {
+					targetDiskPath = v.Path
+					break
+				}
+			}
+		} else {
+			data, err := conn.CopyVolume(req.Context(), sourcePoolName, sourceVolName)
+			if err != nil {
+				r.logger.Error("copy volume failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to copy disk")
+				return
+			}
+			vol, err := conn.CreateVolumeFromBytes(req.Context(), targetPool, diskName, data, "qcow2")
+			if err != nil {
+				r.logger.Error("create volume failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to create template disk")
+				return
+			}
+			targetDiskPath = vol.Path
+		}
+		if targetDiskPath == "" {
+			writeJSONError(w, http.StatusInternalServerError, "failed to resolve disk path")
+			return
+		}
+		var dom libvirtxml.Domain
+		if err := dom.Unmarshal(domainXML); err != nil {
+			r.logger.Error("unmarshal domain XML failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create template")
+			return
+		}
+		dom.UUID = ""
+		dom.Name = "template-" + templateID
+		if dom.Devices != nil {
+			for i := range dom.Devices.Disks {
+				d := &dom.Devices.Disks[i]
+				if d.Source != nil {
+					if d.Source.File != nil {
+						d.Source.File.File = targetDiskPath
+					} else {
+						d.Source.File = &libvirtxml.DomainDiskSourceFile{File: targetDiskPath}
+					}
+					break
+				}
+			}
+		}
+		templateDomainXML, err := dom.Marshal()
+		if err != nil {
+			r.logger.Error("marshal domain XML failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create template")
+			return
+		}
+		defaultCPU, defaultRAM, defaultNet := 2, 2048, "default"
+		if r.config.VMDefaults.CPU > 0 {
+			defaultCPU = r.config.VMDefaults.CPU
+		}
+		if r.config.VMDefaults.RAMMB > 0 {
+			defaultRAM = r.config.VMDefaults.RAMMB
+		}
+		if r.config.VMDefaults.Network != "" {
+			defaultNet = r.config.VMDefaults.Network
+		}
+		meta := &template.Meta{
+			Name:      name,
+			BaseImage: template.BaseImage{Pool: targetPool, Volume: diskName},
+			CPU:       defaultCPU,
+			RAMMB:     defaultRAM,
+			Network:   defaultNet,
+		}
+		templateDir, err := template.CreateTemplateDir(gitBase, templateID)
+		if err != nil {
+			r.logger.Error("create template dir failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create template")
+			return
+		}
+		if err := template.WriteMeta(filepath.Join(templateDir, "meta.yaml"), meta); err != nil {
+			r.logger.Error("write meta failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create template")
+			return
+		}
+		if err := os.WriteFile(filepath.Join(templateDir, "domain.xml"), []byte(templateDomainXML), 0o644); err != nil {
+			r.logger.Error("write domain.xml failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create template")
+			return
+		}
+		templateMetaPath := filepath.ToSlash(filepath.Join("templates", templateID, "meta.yaml"))
+		templateDomainPath := filepath.ToSlash(filepath.Join("templates", templateID, "domain.xml"))
+		if _, err := audit.CommitPaths(gitBase, []string{templateMetaPath, templateDomainPath}, "template: create "+templateID); err != nil {
+			r.logger.Error("commit template files failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create template")
+			return
+		}
+		diffContent := "--- /dev/null\n+++ templates/" + templateID + "/meta.yaml\n" + templateDiffLines("", metaYAMLString(meta)) + "\n--- /dev/null\n+++ templates/" + templateID + "/domain.xml\n" + templateDiffLines("", templateDomainXML)
+		ts := time.Now().UTC().Format(audit.TimestampFormat)
+		diffPath := fmt.Sprintf("audit/template/%s/%s.diff", templateID, ts)
+		userID := user.ID
+		ev := audit.Event{
+			EventType:  "template_create",
+			EntityType: "template",
+			EntityID:   templateID,
+			UserID:     &userID,
+			Payload: map[string]interface{}{
+				"source_host_id": sourceHostID,
+				"source_libvirt_uuid": sourceUUID,
+				"name": name,
+			},
+		}
+		if err := audit.RecordEventWithDiff(req.Context(), r.db, gitBase, ev, diffPath, diffContent); err != nil {
+			r.logger.Error("audit template_create failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to record audit")
+			return
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		writeJSON(w, http.StatusCreated, createTemplateResponse{
+			TemplateID: templateID,
+			Name:       name,
+			BaseImage:  meta.BaseImage,
+			CreatedAt:  now,
+		})
+	}
+}
+
+func metaYAMLString(m *template.Meta) string {
+	// Minimal YAML for diff
+	var bi string
+	if m.BaseImage.Path != "" {
+		bi = fmt.Sprintf("  path: %s", m.BaseImage.Path)
+	} else {
+		bi = fmt.Sprintf("  volume: %s", m.BaseImage.Volume)
+	}
+	return fmt.Sprintf("name: %s\nbase_image:\n  pool: %s\n%s\ncpu: %d\nram_mb: %d\nnetwork: %s",
+		m.Name, m.BaseImage.Pool, bi, m.CPU, m.RAMMB, m.Network)
+}
+
+func templateDiffLines(before, after string) string {
+	afterLines := strings.Split(after, "\n")
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("@@ -0,0 +1,%d @@\n", len(afterLines)))
+	for _, l := range afterLines {
+		sb.WriteString("+")
+		sb.WriteString(l)
+		sb.WriteString("\n")
+	}
+	return sb.String()
 }
 
 var diskSourceFileRe = regexp.MustCompile(`<source\s+file=['"]([^'"]+)['"]`)

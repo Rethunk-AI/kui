@@ -133,6 +133,38 @@ func RecordEventWithDiff(ctx context.Context, database *db.DB, gitBasePath strin
 	return nil
 }
 
+// CommitPaths adds the given paths (relative to gitBase) and commits with the message. Returns commit SHA.
+func CommitPaths(gitBase string, paths []string, message string) (string, error) {
+	base := strings.TrimSpace(gitBase)
+	if base == "" {
+		return "", fmt.Errorf("git base path required")
+	}
+	repo, err := openOrInitRepo(base)
+	if err != nil {
+		return "", fmt.Errorf("open repo: %w", err)
+	}
+	wt, err := repo.Worktree()
+	if err != nil {
+		return "", fmt.Errorf("worktree: %w", err)
+	}
+	for _, p := range paths {
+		if _, err := wt.Add(p); err != nil {
+			return "", fmt.Errorf("git add %q: %w", p, err)
+		}
+	}
+	commit, err := wt.Commit(message, &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "KUI",
+			Email: "kui@local",
+			When:  time.Now().UTC(),
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("git commit: %w", err)
+	}
+	return commit.String(), nil
+}
+
 func openOrInitRepo(path string) (*git.Repository, error) {
 	r, err := git.PlainOpen(path)
 	if err == nil {

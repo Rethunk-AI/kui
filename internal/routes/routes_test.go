@@ -450,6 +450,7 @@ func TestDiscoveryEndpoints_RequireAuth(t *testing.T) {
 		{"/api/hosts/local/pools/default/volumes"},
 		{"/api/hosts/local/networks"},
 		{"/api/hosts/local/vms/00000000-0000-0000-0000-000000000000"},
+		{"/api/templates"},
 	}
 	for _, tt := range tests {
 		req := httptest.NewRequest(http.MethodGet, tt.path, nil)

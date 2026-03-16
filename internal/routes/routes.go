@@ -31,6 +31,7 @@ import (
 	"github.com/kui/kui/internal/db"
 	"github.com/kui/kui/internal/libvirtconn"
 	mw "github.com/kui/kui/internal/middleware"
+	"github.com/kui/kui/internal/template"
 )
 
 type RouterOptions struct {
@@ -233,6 +234,8 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/clone", state.vmClone())
 
 	router.Post("/api/vms", state.createVM())
+
+	router.Get("/api/templates", state.getTemplates())
 
 	return router
 }
@@ -1306,6 +1309,76 @@ func (r *routerState) createVM() http.HandlerFunc {
 			Status:      string(domainInfo.State),
 		})
 	}
+}
+
+func (r *routerState) getTemplates() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		_, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		gitBase := r.configuredGitPath()
+		if gitBase == "" {
+			writeJSONError(w, http.StatusServiceUnavailable, "git path not configured")
+			return
+		}
+		list, err := template.ListTemplates(gitBase)
+		if err != nil {
+			r.logger.Error("list templates failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to list templates")
+			return
+		}
+		defaultCPU, defaultRAM, defaultNet := 2, 2048, "default"
+		if r.config != nil {
+			if r.config.VMDefaults.CPU > 0 {
+				defaultCPU = r.config.VMDefaults.CPU
+			}
+			if r.config.VMDefaults.RAMMB > 0 {
+				defaultRAM = r.config.VMDefaults.RAMMB
+			}
+			if r.config.VMDefaults.Network != "" {
+				defaultNet = r.config.VMDefaults.Network
+			}
+		}
+		out := make([]templateListItem, 0, len(list))
+		for _, t := range list {
+			cpu, ram, net := t.CPU, t.RAMMB, t.Network
+			if cpu <= 0 {
+				cpu = defaultCPU
+			}
+			if ram <= 0 {
+				ram = defaultRAM
+			}
+			if net == "" {
+				net = defaultNet
+			}
+			out = append(out, templateListItem{
+				TemplateID: t.TemplateID,
+				Name:       t.Name,
+				BaseImage:  t.BaseImage,
+				CPU:        cpu,
+				RAMMB:      ram,
+				Network:    net,
+				CreatedAt:  t.CreatedAt,
+			})
+		}
+		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+type templateListItem struct {
+	TemplateID string           `json:"template_id"`
+	Name       string           `json:"name"`
+	BaseImage  template.BaseImage `json:"base_image"`
+	CPU        int              `json:"cpu"`
+	RAMMB      int              `json:"ram_mb"`
+	Network    string           `json:"network"`
+	CreatedAt  string           `json:"created_at"`
 }
 
 var diskSourceFileRe = regexp.MustCompile(`<source\s+file=['"]([^'"]+)['"]`)

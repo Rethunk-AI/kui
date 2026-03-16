@@ -206,7 +206,7 @@ or
 5. Auto-generate `jwt_secret` (e.g. 32+ cryptographically random bytes, base64-encoded). Setup never accepts user-supplied `jwt_secret`; the backend always generates it for security.
 6. Write YAML config to disk (path from `--config` or default `/etc/kui/config.yaml`), including the generated `jwt_secret` and all host/admin/default values.
 7. Drop write access to config (read-only at runtime).
-8. Audit log: `wizard_complete` event (see `specs/active/spec-audit-integration/spec.md` §5.1).
+8. Audit log: `wizard_complete` event (see `specs/done/spec-audit-integration/spec.md` §5.1).
 
 **Errors**:
 

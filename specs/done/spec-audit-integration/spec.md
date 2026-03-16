@@ -204,7 +204,7 @@ Paths and timestamp format are defined in `specs/done/schema-storage/spec.md`:
 ### 5.4 VM config change
 
 - Triggers:
-  - VM edit endpoint: `PATCH /api/hosts/{host_id}/vms/{libvirt_uuid}` (see `specs/active/spec-vm-lifecycle-create/spec.md` §7).
+  - VM edit endpoint: `PATCH /api/hosts/{host_id}/vms/{libvirt_uuid}` (see `specs/done/spec-vm-lifecycle-create/spec.md` §7).
 - SQLite event:
   - `event_type`: `vm_config_change`
   - `entity_type`: `vm`
@@ -357,8 +357,8 @@ For all events:
 - `docs/prd/decision-log.md` §§0–4 (scope, verbosity, retention constraints).
 - `docs/prd.md` open assumptions for audit git storage.
 - `specs/done/api-auth` endpoint contract for login/logout action behavior.
-- `specs/active/spec-vm-lifecycle-create/spec.md` for VM operation flow.
-- `specs/active/spec-template-management/spec.md` for template file boundaries.
+- `specs/done/spec-vm-lifecycle-create/spec.md` for VM operation flow.
+- `specs/done/spec-template-management/spec.md` for template file boundaries.
 
 ## 10. Out of scope
 

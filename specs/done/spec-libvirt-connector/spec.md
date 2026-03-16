@@ -87,7 +87,7 @@
   - `name`, `uuid`, `state`, and where applicable: optional config summary (`maxMemory`, `vcpus` if required by caller).
   - State mapping is normalized to KUI lifecycle terms (`running`, `paused`, `shutoff`, etc.).
 - Domain operation errors are propagated to caller with operation+host context, without leaking connector internals.
-- **Domain redefine:** `Domain.DefineXML` (or `Connect.DomainDefineXML`) supports updating existing persistent domain XML. Domain must be stopped for most config changes (e.g. CPU, RAM, network). Used by VM config edit flow in `specs/active/spec-vm-lifecycle-create/spec.md` §7.
+- **Domain redefine:** `Domain.DefineXML` (or `Connect.DomainDefineXML`) supports updating existing persistent domain XML. Domain must be stopped for most config changes (e.g. CPU, RAM, network). Used by VM config edit flow in `specs/done/spec-vm-lifecycle-create/spec.md` §7.
 - Binding references:
   - Plan requirement for Go binding method names (`Connect.ListAllDomains`, `Domain.Create`, etc.) + decision-log lifecycle scope (MVP lifecycle includes list/create/start/stop/pause/resume/destroy) + libvirt research Go API examples.
 
@@ -138,7 +138,7 @@
 - Volume create: Used by pool+path VM create when disk is auto-generated. Caller supplies volume XML (name, capacity, format).
 - Volume copy/stream: Used by VM clone. Source and target may be on same host or different hosts. Connector must guarantee end-to-end result is a usable cloned disk at the resolved target path. For cross-host, implementation may use SSH-backed path operations, libvirt-assisted copy/stream, or `qemu-img` conversion.
 - Binding references:
-  - `specs/active/spec-vm-lifecycle-create/spec.md` §2.2 (create), §3.4 (clone), §10 (connector responsibilities).
+  - `specs/done/spec-vm-lifecycle-create/spec.md` §2.2 (create), §3.4 (clone), §10 (connector responsibilities).
 - Validation behavior:
   - If pool is missing or inactive, return explicit validation failure.
   - If a requested path or name is missing, return explicit validation failure before any write/define/create action.

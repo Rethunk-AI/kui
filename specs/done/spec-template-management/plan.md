@@ -216,8 +216,8 @@ The `spec.md` file should include:
 
 | Artifact | Location | Owner |
 |----------|----------|-------|
-| plan.md | specs/active/spec-template-management/plan.md | (this document) |
-| spec.md | specs/active/spec-template-management/spec.md | developer subagent |
+| plan.md | specs/done/spec-template-management/plan.md | (this document) |
+| spec.md | specs/done/spec-template-management/spec.md | developer subagent |
 
 ---
 

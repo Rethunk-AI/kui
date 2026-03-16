@@ -269,7 +269,7 @@ This specification defines the MVP VM lifecycle and provisioning contract for KU
 3. Fetch current domain XML via connector.
 4. Apply changes: update vm_metadata for display_name/console_preference; merge domain XML for cpu/ram_mb/network.
 5. If domain XML changed: `Domain.DefineXML` (redefine).
-6. Emit `vm_config_change` audit event (SQLite + Git diff per `specs/active/spec-audit-integration/spec.md` §5.4).
+6. Emit `vm_config_change` audit event (SQLite + Git diff per `specs/done/spec-audit-integration/spec.md` §5.4).
 
 ### 7.4 Response
 

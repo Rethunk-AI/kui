@@ -156,7 +156,7 @@ Router implementation uses `github.com/go-chi/chi/v5`.
 
 - Static UI assets (SPA bundle) are served from the embedded `dist/` or configured static directory.
 - `GET /` serves the SPA entry (e.g. `index.html`).
-- **SPA catch-all:** Any path under `/` that does not match an API route (`/api/*`), WebSocket/SSE route, or existing static file must serve `index.html`. This enables client-side routing (e.g. `/vms`, `/hosts/1/vms/uuid`). Per [specs/active/spec-frontend-build/spec.md](../../active/spec-frontend-build/spec.md) §5.
+- **SPA catch-all:** Any path under `/` that does not match an API route (`/api/*`), WebSocket/SSE route, or existing static file must serve `index.html`. This enables client-side routing (e.g. `/vms`, `/hosts/1/vms/uuid`). Per [specs/done/spec-frontend-build/spec.md](../spec-frontend-build/spec.md) §5.
 - Route order: API and WebSocket/SSE handlers are registered before the SPA catch-all.
 - Static/SPA routes are evaluated so unauthenticated UI entry remains reachable.
 
@@ -182,10 +182,10 @@ Implementation notes:
 - Mount `/api` group under a single router.
 - For unimplemented future handlers, mount placeholders only when explicit feature specs exist; no fallback or fake endpoints.
 - Route-to-spec reference (MVP):
-  - VM lifecycle (list, create, clone, start, stop, pause, resume, destroy, claim, config edit): `specs/active/spec-vm-lifecycle-create/spec.md`
-  - Console (VNC, serial WebSocket): `specs/active/spec-console-realtime/spec.md`
-  - Real-time (SSE status stream): `specs/active/spec-console-realtime/spec.md`
-  - Templates (list, save VM as template): `specs/active/spec-template-management/spec.md`
+  - VM lifecycle (list, create, clone, start, stop, pause, resume, destroy, claim, config edit): `specs/done/spec-vm-lifecycle-create/spec.md`
+  - Console (VNC, serial WebSocket): `specs/done/spec-console-realtime/spec.md`
+  - Real-time (SSE status stream): `specs/done/spec-console-realtime/spec.md`
+  - Templates (list, save VM as template): `specs/done/spec-template-management/spec.md`
   - Preferences, hosts: `specs/done/api-auth/spec.md`
 
 ## §6 Startup Sequence
@@ -226,7 +226,7 @@ Implementation notes:
    - `audit/wizard/`
 4. If workspace initialization fails, fail fast: log the error and exit non-zero.
 
-Subdirectory requirements derive from `specs/done/schema-storage/spec.md` §2.4 and `specs/active/spec-audit-integration/spec.md` §4.1.
+Subdirectory requirements derive from `specs/done/schema-storage/spec.md` §2.4 and `specs/done/spec-audit-integration/spec.md` §4.1.
 
 ### 6.2 Setup startup
 
@@ -311,7 +311,7 @@ Canonical package responsibilities:
 
 ## Verification Checklist
 
-- [x] Spec file exists under `specs/active/spec-application-bootstrap/spec.md`.
+- [x] Spec file exists under `specs/done/spec-application-bootstrap/spec.md`.
 - [x] Total lines under 800.
 - [x] Tasks table has fewer than 10 items.
 - [x] No stub or placeholder runtime behavior is described for core bootstrap.

@@ -100,7 +100,7 @@ This sequence follows the PRD console preference ordering and remote connectivit
 
 ### 4.2 Status endpoint
 
-- SSE endpoint: `GET /api/events` under the API host. Aligns with `specs/active/spec-frontend-build/spec.md` §5.
+- SSE endpoint: `GET /api/events` under the API host. Aligns with `specs/done/spec-frontend-build/spec.md` §5.
 - Event stream sends only canonical v1 events:
   - `vm.state_changed`
   - `host.online`

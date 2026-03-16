@@ -131,7 +131,7 @@ Create `spec.md` for the Console & Real-time feature. The spec defines noVNC pro
 ## Ownership
 
 - **Spec author**: Developer subagent
-- **Target file**: `specs/active/spec-console-realtime/spec.md`
+- **Target file**: `specs/done/spec-console-realtime/spec.md`
 - **Do not create**: plan.md for implementation (that comes after spec)
 
 ## Verification

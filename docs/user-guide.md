@@ -46,7 +46,7 @@ Two ways to create a VM:
 3. Optionally set a name (default: `{source}`).
 4. Submit. KUI copies the disk and defines the new domain.
 
-See [spec-vm-lifecycle-create](../specs/active/spec-vm-lifecycle-create/spec.md) §2–3 for create and clone flows.
+See [spec-vm-lifecycle-create](../specs/done/spec-vm-lifecycle-create/spec.md) §2–3 for create and clone flows.
 
 ---
 
@@ -81,7 +81,7 @@ Console preference is per-VM; set it via the VM config edit. See [decision-log �
 2. **List templates** — View saved templates in the templates section.
 3. **Create VM from template** — (v2) Not yet in MVP.
 
-See [spec-template-management](../specs/active/spec-template-management/spec.md).
+See [spec-template-management](../specs/done/spec-template-management/spec.md).
 
 ---
 
@@ -113,4 +113,4 @@ Transient alerts (host offline, errors) appear in the alerts panel. They clear o
 
 ## VM Config Edit
 
-Edit display name, console preference (novnc, xterm), and domain settings (CPU, RAM, network) via the VM detail or edit flow. Domain edits require the VM to be stopped. See [spec-vm-lifecycle-create](../specs/active/spec-vm-lifecycle-create/spec.md) §7.
+Edit display name, console preference (novnc, xterm), and domain settings (CPU, RAM, network) via the VM detail or edit flow. Domain edits require the VM to be stopped. See [spec-vm-lifecycle-create](../specs/done/spec-vm-lifecycle-create/spec.md) §7.

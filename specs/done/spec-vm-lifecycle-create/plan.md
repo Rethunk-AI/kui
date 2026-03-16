@@ -115,7 +115,7 @@ The spec.md shall have the following sections. Each maps to decision-log topics 
 
 ## Implementation Instructions for Developer
 
-1. Create `specs/active/spec-vm-lifecycle-create/spec.md`.
+1. Create `specs/done/spec-vm-lifecycle-create/spec.md`.
 2. Write each section (1–10) per the structure above. Use declarative requirements; cite decision-log entries where binding.
 3. Keep total length <800 lines. Use concise bullets and tables.
 4. Do not invent new requirements; derive only from decision-log, architecture, and libvirt research.
@@ -129,7 +129,7 @@ The spec.md shall have the following sections. Each maps to decision-log topics 
 
 ## Verification
 
-- [ ] spec.md exists at specs/active/spec-vm-lifecycle-create/spec.md
+- [ ] spec.md exists at specs/done/spec-vm-lifecycle-create/spec.md
 - [ ] All 10 sections present and populated
 - [ ] No migration/backfill/backwards-compatibility language (greenfield)
 - [ ] Line count <800

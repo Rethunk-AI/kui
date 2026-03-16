@@ -149,4 +149,4 @@ The `spec.md` shall have these sections:
 
 ## Deliverable
 
-Create `specs/active/spec-audit-integration/spec.md` following the structure above. No plan.md edits needed after spec is written.
+Create `specs/done/spec-audit-integration/spec.md` following the structure above. No plan.md edits needed after spec is written.

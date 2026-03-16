@@ -48,7 +48,7 @@ Create `spec.md` that formally specifies the frontend build tooling, asset pipel
 
 ## Verification
 
-- [x] spec.md exists at specs/active/spec-frontend-build/spec.md
+- [x] spec.md exists at specs/done/spec-frontend-build/spec.md
 - [x] All 7 sections present and populated
 - [x] No migration/backfill/backwards-compatibility language (greenfield)
 - [x] Line count <800 (actual: ~186)

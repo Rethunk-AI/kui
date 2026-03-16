@@ -18,17 +18,18 @@
 
 | spec_id | progress | blockers |
 |---------|----------|----------|
-| spec-audit-integration | spec ✓; impl MVP (wizard, auth) | — |
+| spec-audit-integration | spec ✓; impl DONE | — |
 | spec-vm-lifecycle-create | spec ✓; impl DONE | — |
 | spec-frontend-build | spec ✓; impl DONE | — |
 | spec-template-management | spec ✓; impl DONE | — |
 | spec-console-realtime | spec ✓; impl DONE | — |
 | spec-ui-deployment | spec ✓; impl DONE | — |
 
-### Done Specs (7)
+### Done Specs (8)
 
 | spec_id | status |
 |---------|--------|
+| spec-audit-integration | DONE — wizard, auth, vm_lifecycle, vm_config_change, template_create |
 | spec-console-realtime | DONE — SSE /api/events, noVNC /vnc, xterm serial /serial |
 | spec-frontend-build | DONE — Vite, web/, embed, SPA fallback |
 | spec-ui-deployment | DONE — systemd, TLS docs, checklist, host selector, alerts, VM list, Winbox console |
@@ -133,3 +134,5 @@ spec-libvirt-connector (T4) ─┘
 **2026-03-16:** spec-console-realtime complete. SSE GET /api/events (broadcaster, vm.state_changed, host.online/offline). noVNC WebSocket proxy GET /api/hosts/{id}/vms/{uuid}/vnc (local only). xterm.js serial proxy GET /api/hosts/{id}/vms/{uuid}/serial (Connector.OpenSerialConsole, local only).
 
 **2026-03-16:** spec-ui-deployment complete. Systemd unit (deploy/systemd/), TLS/reverse-proxy docs (docs/deployment.md). First-run checklist, host selector, alerts panel+toast, VM list (grouped, orphans+claim), Winbox canvas with noVNC/xterm console.
+
+**2026-03-16:** spec-audit-integration complete. vm_lifecycle wired in create, clone, start, stop, pause, resume, destroy. All integration points: wizard_complete, auth, vm_config_change, template_create, vm_lifecycle.

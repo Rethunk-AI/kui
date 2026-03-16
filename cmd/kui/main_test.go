@@ -64,8 +64,7 @@ git:
 }
 
 func TestSetupMode(t *testing.T) {
-	t.Parallel()
-
+	// Do not run in parallel: sets KUI_DB_PATH which would pollute other tests.
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "setup.db")
 	configPath := filepath.Join(tempDir, "config.yaml")
@@ -123,9 +122,76 @@ func TestSetupMode(t *testing.T) {
 	}
 }
 
-func TestSetupCompleteIdempotent(t *testing.T) {
-	t.Parallel()
+func TestInvalidConfigFallsBackToSetupMode(t *testing.T) {
+	// Do not run in parallel: sets KUI_DB_PATH which would pollute other tests.
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "invalid_config.db")
+	configPath := filepath.Join(tempDir, "config.yaml")
+	t.Cleanup(func() {
+		_ = os.Unsetenv("KUI_DB_PATH")
+	})
+	if err := os.Setenv("KUI_DB_PATH", dbPath); err != nil {
+		t.Fatalf("set KUI_DB_PATH: %v", err)
+	}
 
+	// Invalid config: empty hosts (validation error)
+	invalidConfig := []byte(`hosts: []
+jwt_secret: "0123456789abcdef0123456789abcdef"
+`)
+	if err := os.WriteFile(configPath, invalidConfig, 0o600); err != nil {
+		t.Fatalf("write invalid config: %v", err)
+	}
+
+	opts, err := parseFlags([]string{"--config", configPath, "--listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	app, err := buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("build application: %v (invalid config should fall back to setup mode, not crash)", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = app.shutdown(ctx)
+	}()
+
+	if app.config != nil {
+		t.Fatalf("expected app.config=nil when config invalid")
+	}
+
+	listener, err := app.startServer(opts.listen, "", "")
+	if err != nil {
+		t.Fatalf("start server: %v", err)
+	}
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/api/setup/status", listener.Addr().String()))
+	if err != nil {
+		t.Fatalf("GET /api/setup/status failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status: %d", resp.StatusCode)
+	}
+
+	var payload struct {
+		SetupRequired bool    `json:"setup_required"`
+		Reason        *string `json:"reason"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !payload.SetupRequired {
+		t.Fatalf("expected setup_required=true when config invalid")
+	}
+	if payload.Reason == nil || *payload.Reason != "config_missing" {
+		t.Fatalf("expected reason config_missing, got %#v", payload.Reason)
+	}
+}
+
+func TestSetupCompleteIdempotent(t *testing.T) {
+	// Do not run in parallel: sets KUI_DB_PATH/KUI_GIT_PATH which would pollute other tests.
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "idempotent.db")
 	configPath := filepath.Join(tempDir, "config.yaml")
@@ -231,4 +297,3 @@ git:
 		t.Fatalf("expected listener to exist")
 	}
 }
-

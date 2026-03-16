@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -39,10 +40,11 @@ func (f *trackedFlag) Set(value string) error {
 }
 
 type startupOptions struct {
-	configPath string
-	listen    string
-	tlsCert   string
-	tlsKey    string
+	configPath   string
+	configSource string // "--config", "env", or "default"
+	listen       string
+	tlsCert      string
+	tlsKey       string
 }
 
 type application struct {
@@ -61,9 +63,16 @@ type application struct {
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	if err := run(os.Args[1:], logger); err != nil {
-		logger.Error("failed to start", "error", err)
-		os.Exit(1)
+		fatalStartup(err)
 	}
+}
+
+func fatalStartup(err error) {
+	payload := map[string]string{"error": err.Error()}
+	enc := json.NewEncoder(os.Stderr)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(payload)
+	os.Exit(1)
 }
 
 func run(args []string, logger *slog.Logger) error {
@@ -135,6 +144,12 @@ func parseFlags(args []string) (startupOptions, error) {
 	tlsCert := strings.TrimSpace(tlsCertFlag.value)
 	tlsKey := strings.TrimSpace(tlsKeyFlag.value)
 
+	configSource := "default"
+	if configPathFlag.set {
+		configSource = "--config"
+	} else if strings.TrimSpace(os.Getenv("KUI_CONFIG")) != "" {
+		configSource = "env"
+	}
 	if envConfig := strings.TrimSpace(os.Getenv("KUI_CONFIG")); envConfig != "" && !configPathFlag.set {
 		configPath = envConfig
 	}
@@ -150,10 +165,11 @@ func parseFlags(args []string) (startupOptions, error) {
 	}
 
 	options = startupOptions{
-		configPath: configPath,
-		listen:     listen,
-		tlsCert:    tlsCert,
-		tlsKey:     tlsKey,
+		configPath:   configPath,
+		configSource: configSource,
+		listen:       listen,
+		tlsCert:      tlsCert,
+		tlsKey:       tlsKey,
 	}
 	return options, nil
 }
@@ -178,14 +194,22 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 	if configExists {
 		loaded, err := config.Load(cfgPath)
 		if err != nil {
-			return nil, err
+			logger.Warn("config load failed, falling back to setup mode", "path", cfgPath, "err", err)
+			appConfig = nil
+		} else {
+			appConfig = loaded
+			dbPath = loaded.DB.Path
+			gitPath = loaded.Git.Path
 		}
-		appConfig = loaded
-		dbPath = loaded.DB.Path
-		gitPath = loaded.Git.Path
 	}
 
-	if !configExists {
+	mode := "setup"
+	if appConfig != nil {
+		mode = "configured"
+	}
+	logger.Info("KUI startup", "config_source", opts.configSource, "config_path", cfgPath, "mode", mode)
+
+	if appConfig == nil {
 		dbPath = strings.TrimSpace(os.Getenv("KUI_DB_PATH"))
 		if dbPath == "" {
 			dbPath = "/var/lib/kui/kui.db"
@@ -198,10 +222,14 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 
 	database, err := db.Open(dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("open db: %w", err)
+		if configExists {
+			database = nil
+		} else {
+			return nil, fmt.Errorf("open db: %w", err)
+		}
 	}
 
-	if appConfig != nil {
+	if appConfig != nil && database != nil {
 		if err := git.Init(appConfig.Git.Path); err != nil {
 			_ = database.Close()
 			return nil, fmt.Errorf("init git layout: %w", err)
@@ -213,7 +241,7 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 		DB:            database,
 		Config:        appConfig,
 		ConfigPath:    cfgPath,
-		ConfigPresent: configExists,
+		ConfigPresent: appConfig != nil,
 		DBPath:        dbPath,
 		GitPath:       gitPath,
 	})

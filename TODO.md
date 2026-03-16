@@ -23,14 +23,15 @@
 | spec-frontend-build | spec ✓; impl DONE | — |
 | spec-template-management | spec ✓; impl DONE | — |
 | spec-console-realtime | spec ✓; impl DONE | — |
-| spec-ui-deployment | spec ✓; impl 0% | — |
+| spec-ui-deployment | spec ✓; impl DONE | — |
 
-### Done Specs (6)
+### Done Specs (7)
 
 | spec_id | status |
 |---------|--------|
 | spec-console-realtime | DONE — SSE /api/events, noVNC /vnc, xterm serial /serial |
 | spec-frontend-build | DONE — Vite, web/, embed, SPA fallback |
+| spec-ui-deployment | DONE — systemd, TLS docs, checklist, host selector, alerts, VM list, Winbox console |
 | schema-storage | DONE — moved to specs/done/ |
 | spec-libvirt-connector | DONE — moved to specs/done/ |
 | spec-application-bootstrap | DONE — moved to specs/done/ |
@@ -130,3 +131,5 @@ spec-libvirt-connector (T4) ─┘
 **2026-03-16:** spec-frontend-build complete. Vite scaffold (web/), npm deps (noVNC, xterm, winbox), lib structure (api, console, winbox-adapter). Backend embed (web/embed.go), SPA fallback, KUI_WEB_DIR support. Makefile: `make all` builds web then Go.
 
 **2026-03-16:** spec-console-realtime complete. SSE GET /api/events (broadcaster, vm.state_changed, host.online/offline). noVNC WebSocket proxy GET /api/hosts/{id}/vms/{uuid}/vnc (local only). xterm.js serial proxy GET /api/hosts/{id}/vms/{uuid}/serial (Connector.OpenSerialConsole, local only).
+
+**2026-03-16:** spec-ui-deployment complete. Systemd unit (deploy/systemd/), TLS/reverse-proxy docs (docs/deployment.md). First-run checklist, host selector, alerts panel+toast, VM list (grouped, orphans+claim), Winbox canvas with noVNC/xterm console.

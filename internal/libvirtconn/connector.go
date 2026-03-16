@@ -7,8 +7,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
+	"sync"
 
 	"libvirt.org/go/libvirt"
 )
@@ -86,6 +88,10 @@ type Connector interface {
 	CopyVolume(ctx context.Context, pool string, volumeName string) ([]byte, error)
 	// CreateVolumeFromBytes creates a volume and uploads data. Format is "qcow2" or "raw".
 	CreateVolumeFromBytes(ctx context.Context, pool string, name string, data []byte, format string) (StorageVolumeInfo, error)
+
+	// OpenSerialConsole opens the domain's first serial/console device and returns a bidirectional stream.
+	// Uses virDomainOpenConsole; empty devname selects the first console or serial device.
+	OpenSerialConsole(ctx context.Context, uuid string) (io.ReadWriteCloser, error)
 }
 
 // Connect opens a libvirt connection and returns a connection-scoped connector.
@@ -822,6 +828,55 @@ func resolveURI(uri string, keyfile string) (string, error) {
 	}
 
 	return parsed.String(), nil
+}
+
+// streamWrapper adapts libvirt.Stream to io.ReadWriteCloser for serial console proxying.
+type streamWrapper struct {
+	st   *libvirt.Stream
+	once sync.Once
+}
+
+func (w *streamWrapper) Read(p []byte) (n int, err error) {
+	return w.st.Recv(p)
+}
+
+func (w *streamWrapper) Write(p []byte) (n int, err error) {
+	return w.st.Send(p)
+}
+
+func (w *streamWrapper) Close() error {
+	var err error
+	w.once.Do(func() {
+		_ = w.st.Abort()
+		err = w.st.Free()
+	})
+	return err
+}
+
+func (c *connector) OpenSerialConsole(ctx context.Context, uuid string) (io.ReadWriteCloser, error) {
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+
+	domain, err := c.lookupDomain(ctx, "open serial console", uuid)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = domain.Free()
+	}()
+
+	stream, err := c.conn.NewStream(libvirt.STREAM_NONBLOCK)
+	if err != nil {
+		return nil, c.wrapErr("open serial console: new stream", err)
+	}
+
+	if err := domain.OpenConsole("", stream, 0); err != nil {
+		_ = stream.Free()
+		return nil, c.wrapErr("open serial console", err)
+	}
+
+	return &streamWrapper{st: stream}, nil
 }
 
 func normalizeDomainState(state libvirt.DomainState) DomainLifecycleState {

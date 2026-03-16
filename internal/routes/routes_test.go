@@ -461,6 +461,7 @@ func TestDiscoveryEndpoints_RequireAuth(t *testing.T) {
 		{"/api/hosts/local/networks"},
 		{"/api/hosts/local/vms/00000000-0000-0000-0000-000000000000"},
 		{"/api/hosts/local/vms/00000000-0000-0000-0000-000000000000/vnc"},
+		{"/api/hosts/local/vms/00000000-0000-0000-0000-000000000000/serial"},
 		{"/api/templates"},
 		{"/api/events"},
 	}
@@ -648,6 +649,106 @@ jwt_secret: "` + testJWTSecret + `"
 	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/hosts/local/vms/00000000-0000-0000-0000-000000000000/vnc", nil)
+	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 VM not found, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSerial_HostNotFound(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	handler := NewRouter(RouterOptions{
+		Logger: nil, DB: database, Config: loaded, ConfigPath: configPath,
+		ConfigPresent: true, DBPath: filepath.Join(tempDir, "kui.db"), GitPath: tempDir,
+	})
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login: %d %s", loginRec.Code, loginRec.Body.String())
+	}
+	var loginResp struct{ Token string }
+	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/hosts/nonexistent/vms/00000000-0000-0000-0000-000000000000/serial", nil)
+	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 host not found, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSerial_VMNotFound(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	handler := NewRouter(RouterOptions{
+		Logger: nil, DB: database, Config: loaded, ConfigPath: configPath,
+		ConfigPresent: true, DBPath: filepath.Join(tempDir, "kui.db"), GitPath: tempDir,
+	})
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login: %d %s", loginRec.Code, loginRec.Body.String())
+	}
+	var loginResp struct{ Token string }
+	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/hosts/local/vms/00000000-0000-0000-0000-000000000000/serial", nil)
 	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

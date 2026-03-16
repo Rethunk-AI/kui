@@ -6,6 +6,7 @@ package libvirtconn
 import (
 	"context"
 	"errors"
+	"io"
 )
 
 // HostConfig holds libvirt connection parameters.
@@ -86,6 +87,8 @@ type Connector interface {
 
 	CopyVolume(ctx context.Context, pool string, volumeName string) ([]byte, error)
 	CreateVolumeFromBytes(ctx context.Context, pool string, name string, data []byte, format string) (StorageVolumeInfo, error)
+
+	OpenSerialConsole(ctx context.Context, uuid string) (io.ReadWriteCloser, error)
 }
 
 // ErrLibvirtDisabled is returned when the libvirt build tag is not set.

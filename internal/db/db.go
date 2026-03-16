@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -91,6 +92,42 @@ func (d *DB) Close() error {
 	}
 
 	return d.SQL.Close()
+}
+
+// VMMetadataRow represents a row from vm_metadata.
+type VMMetadataRow struct {
+	HostID            string
+	LibvirtUUID       string
+	Claimed           bool
+	DisplayName       sql.NullString
+	ConsolePreference sql.NullString
+	LastAccess        sql.NullString
+	CreatedAt         string
+	UpdatedAt         string
+}
+
+// ListVMMetadata returns all vm_metadata rows.
+func (d *DB) ListVMMetadata(ctx context.Context) ([]VMMetadataRow, error) {
+	rows, err := d.SQL.QueryContext(ctx, `SELECT host_id, libvirt_uuid, claimed, display_name, console_preference, last_access, created_at, updated_at FROM vm_metadata`)
+	if err != nil {
+		return nil, fmt.Errorf("list vm_metadata: %w", err)
+	}
+	defer rows.Close()
+
+	var out []VMMetadataRow
+	for rows.Next() {
+		var r VMMetadataRow
+		var claimed int
+		if err := rows.Scan(&r.HostID, &r.LibvirtUUID, &claimed, &r.DisplayName, &r.ConsolePreference, &r.LastAccess, &r.CreatedAt, &r.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan vm_metadata: %w", err)
+		}
+		r.Claimed = claimed != 0
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate vm_metadata: %w", err)
+	}
+	return out, nil
 }
 
 func initSchema(sqlDB *sql.DB) error {

@@ -215,6 +215,7 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Put("/api/preferences", state.putPreferences())
 	router.Get("/api/hosts", state.getHosts())
 
+	router.Get("/api/vms", state.getVMs())
 	router.Get("/api/hosts/{host_id}/pools", state.getHostPools())
 	router.Get("/api/hosts/{host_id}/pools/{pool_name}/volumes", state.getHostPoolVolumes())
 	router.Get("/api/hosts/{host_id}/networks", state.getHostNetworks())
@@ -503,6 +504,110 @@ func (r *routerState) getHosts() http.HandlerFunc {
 			out = append(out, hostResponse{ID: h.ID, URI: h.URI})
 		}
 		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+type vmListResponse struct {
+	VMs     []vmListItem `json:"vms"`
+	Hosts   map[string]string `json:"hosts"`
+	Orphans []vmOrphanItem `json:"orphans"`
+}
+
+type vmListItem struct {
+	HostID            string  `json:"host_id"`
+	LibvirtUUID       string  `json:"libvirt_uuid"`
+	DisplayName       *string `json:"display_name"`
+	Claimed           bool    `json:"claimed"`
+	Status            string  `json:"status"`
+	ConsolePreference *string `json:"console_preference"`
+	LastAccess        *string `json:"last_access"`
+	CreatedAt         string  `json:"created_at"`
+	UpdatedAt         string  `json:"updated_at"`
+}
+
+type vmOrphanItem struct {
+	HostID      string `json:"host_id"`
+	LibvirtUUID string `json:"libvirt_uuid"`
+	Name        string `json:"name"`
+}
+
+func (r *routerState) getVMs() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		_, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		metadataRows, err := r.db.ListVMMetadata(req.Context())
+		if err != nil {
+			r.logger.Error("list vm_metadata failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to list VMs")
+			return
+		}
+		metaByKey := make(map[string]db.VMMetadataRow)
+		for _, row := range metadataRows {
+			metaByKey[row.HostID+"\x00"+row.LibvirtUUID] = row
+		}
+		var vms []vmListItem
+		var orphans []vmOrphanItem
+		hosts := make(map[string]string)
+		for _, h := range r.config.Hosts {
+			conn, err := r.getConnectorForHost(req.Context(), h.ID)
+			if err != nil {
+				hosts[h.ID] = "offline"
+				continue
+			}
+			hosts[h.ID] = "online"
+			domains, err := conn.ListDomains(req.Context())
+			conn.Close()
+			if err != nil {
+				r.logger.Error("list domains failed", "host_id", h.ID, "error", err)
+				hosts[h.ID] = "offline"
+				continue
+			}
+			for _, d := range domains {
+				key := h.ID + "\x00" + d.UUID
+				meta, hasMeta := metaByKey[key]
+				isClaimed := hasMeta && meta.Claimed
+				if isClaimed {
+					displayName := d.Name
+					if meta.DisplayName.Valid && meta.DisplayName.String != "" {
+						displayName = meta.DisplayName.String
+					}
+					var consolePref, lastAccess *string
+					if meta.ConsolePreference.Valid {
+						cp := meta.ConsolePreference.String
+						consolePref = &cp
+					}
+					if meta.LastAccess.Valid {
+						la := meta.LastAccess.String
+						lastAccess = &la
+					}
+					vms = append(vms, vmListItem{
+						HostID:            h.ID,
+						LibvirtUUID:       d.UUID,
+						DisplayName:       &displayName,
+						Claimed:           true,
+						Status:            string(d.State),
+						ConsolePreference: consolePref,
+						LastAccess:        lastAccess,
+						CreatedAt:         meta.CreatedAt,
+						UpdatedAt:         meta.UpdatedAt,
+					})
+				} else {
+					orphans = append(orphans, vmOrphanItem{
+						HostID:      h.ID,
+						LibvirtUUID: d.UUID,
+						Name:        d.Name,
+					})
+				}
+			}
+		}
+		writeJSON(w, http.StatusOK, vmListResponse{VMs: vms, Hosts: hosts, Orphans: orphans})
 	}
 }
 

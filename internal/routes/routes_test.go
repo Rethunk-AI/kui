@@ -445,6 +445,7 @@ func TestDiscoveryEndpoints_RequireAuth(t *testing.T) {
 	tests := []struct {
 		path string
 	}{
+		{"/api/vms"},
 		{"/api/hosts/local/pools"},
 		{"/api/hosts/local/pools/default/volumes"},
 		{"/api/hosts/local/networks"},

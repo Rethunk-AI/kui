@@ -18,7 +18,7 @@
 
 | spec_id | progress | blockers |
 |---------|----------|----------|
-| spec-audit-integration | spec ✓; impl 0% | — |
+| spec-audit-integration | spec ✓; impl MVP (wizard, auth) | — |
 | spec-vm-lifecycle-create | spec ✓; impl 0% | spec-audit-integration |
 | spec-frontend-build | spec ✓; impl 0% | — |
 | spec-template-management | spec ✓; impl 0% | spec-vm-lifecycle-create |
@@ -53,7 +53,7 @@
 |---------|------|-------------|--------|
 | T5 | spec-application-bootstrap | cmd/kui/main.go, config load, middleware, routes, startup/shutdown | DONE |
 | T6 | api-auth | Auth service, setup endpoints, JWT middleware, preferences, hosts | DONE |
-| T7 | spec-audit-integration | Audit service, integration points | audit spec |
+| T7 | spec-audit-integration | Audit service, integration points (wizard_complete, auth) | DONE |
 
 ### Feature (Order 6+)
 
@@ -105,3 +105,7 @@ When T1–T7 are done: create specs for feature specs if needed (plans exist; no
 schema-storage (T1–T3) → spec-application-bootstrap (T5)
 spec-libvirt-connector (T4) ─┘
 ```
+
+## Latest Work
+
+**2026-03-16:** spec-audit-integration T7 complete. Added internal/audit package (RecordEvent, RecordEventWithDiff), wired wizard_complete in setupComplete, wired auth events in login/logout. VM/template audit deferred until those specs land.

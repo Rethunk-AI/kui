@@ -1,6 +1,6 @@
 ---
 name: debugger
-model: claude-4.5-haiku
+model: inherit
 description: Root-cause debugging specialist. Triggers on errors, failing tests, exceptions, crashes, or unexpected behavior. Use proactively when encountering errors, stack traces, or unexpected behavior.
 ---
 

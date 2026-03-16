@@ -1,6 +1,6 @@
 ---
 name: verifier
-model: gpt-5.4-medium-fast
+model: inherit
 description: Validates completed work. Use after tasks are marked done to confirm implementations are functional, spec-compliant, and quality-checked. Use proactively before any completion claim.
 readonly: true
 ---

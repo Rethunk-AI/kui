@@ -1,6 +1,6 @@
 ---
 name: planner
-model: gpt-5.4-medium
+model: inherit
 description: Creates technical implementation plans from specifications. Use proactively for architecture, data modeling, API design, or any non-trivial feature work. Ensures decisions are deliberate and isolated from the main context.
 ---
 

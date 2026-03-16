@@ -1,6 +1,6 @@
 ---
 name: security-auditor
-model: gpt-5.4-medium-fast
+model: inherit
 description: Application security and data-access auditor. Trigger terms: auth, authorization, PII, secrets, injection, SSRF, access control, new DB table, libvirt credentials, config. Use proactively when modifying database schema, VM lifecycle handlers, or data-fetching logic.
 readonly: true
 ---

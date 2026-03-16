@@ -1071,7 +1071,7 @@ func unifiedDiffLines(before, after string) string {
 
 func (r *routerState) vmLifecycleOp(op string, fn func(conn libvirtconn.Connector, ctx context.Context, uuid string) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		_, ok := mw.UserFromContext(req)
+		user, ok := mw.UserFromContext(req)
 		if !ok {
 			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 			return
@@ -1097,13 +1097,26 @@ func (r *routerState) vmLifecycleOp(op string, fn func(conn libvirtconn.Connecto
 			return
 		}
 		defer conn.Close()
+		fromState, _ := conn.GetState(req.Context(), libvirtUUID)
 		if err := fn(conn, req.Context(), libvirtUUID); err != nil {
 			r.logger.Error(op+" failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
 			writeJSONError(w, http.StatusInternalServerError, op+" failed")
 			return
 		}
-		state, _ := conn.GetState(req.Context(), libvirtUUID)
-		writeJSON(w, http.StatusOK, map[string]string{"status": string(state)})
+		toState, _ := conn.GetState(req.Context(), libvirtUUID)
+		_ = audit.RecordEvent(req.Context(), r.db, audit.Event{
+			EventType:  "vm_lifecycle",
+			EntityType: "vm",
+			EntityID:   libvirtUUID,
+			UserID:     &user.ID,
+			Payload: map[string]string{
+				"action":     op,
+				"from_state": string(fromState),
+				"to_state":   string(toState),
+				"host_id":    hostID,
+			},
+		})
+		writeJSON(w, http.StatusOK, map[string]string{"status": string(toState)})
 	}
 }
 
@@ -1133,7 +1146,7 @@ func (r *routerState) vmDestroy() http.HandlerFunc {
 
 func (r *routerState) vmStop() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		_, ok := mw.UserFromContext(req)
+		user, ok := mw.UserFromContext(req)
 		if !ok {
 			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 			return
@@ -1159,6 +1172,7 @@ func (r *routerState) vmStop() http.HandlerFunc {
 			return
 		}
 		defer conn.Close()
+		fromState, _ := conn.GetState(req.Context(), libvirtUUID)
 		timeout := 30 * time.Second
 		if r.config != nil && r.config.VMLifecycle.GracefulStopTimeout > 0 {
 			timeout = time.Duration(r.config.VMLifecycle.GracefulStopTimeout)
@@ -1175,6 +1189,18 @@ func (r *routerState) vmStop() http.HandlerFunc {
 				break
 			}
 			if state == libvirtconn.DomainStateShutoff {
+				_ = audit.RecordEvent(req.Context(), r.db, audit.Event{
+					EventType:  "vm_lifecycle",
+					EntityType: "vm",
+					EntityID:   libvirtUUID,
+					UserID:     &user.ID,
+					Payload: map[string]string{
+						"action":     "stop",
+						"from_state": string(fromState),
+						"to_state":   string(libvirtconn.DomainStateShutoff),
+						"host_id":    hostID,
+					},
+				})
 				writeJSON(w, http.StatusOK, map[string]string{"status": string(state)})
 				return
 			}
@@ -1185,8 +1211,20 @@ func (r *routerState) vmStop() http.HandlerFunc {
 			writeJSONError(w, http.StatusInternalServerError, "stop failed")
 			return
 		}
-		state, _ := conn.GetState(req.Context(), libvirtUUID)
-		writeJSON(w, http.StatusOK, map[string]string{"status": string(state)})
+		toState, _ := conn.GetState(req.Context(), libvirtUUID)
+		_ = audit.RecordEvent(req.Context(), r.db, audit.Event{
+			EventType:  "vm_lifecycle",
+			EntityType: "vm",
+			EntityID:   libvirtUUID,
+			UserID:     &user.ID,
+			Payload: map[string]string{
+				"action":     "stop",
+				"from_state": string(fromState),
+				"to_state":   string(toState),
+				"host_id":    hostID,
+			},
+		})
+		writeJSON(w, http.StatusOK, map[string]string{"status": string(toState)})
 	}
 }
 
@@ -1275,7 +1313,7 @@ type createVMResponse struct {
 
 func (r *routerState) createVM() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		_, ok := mw.UserFromContext(req)
+		user, ok := mw.UserFromContext(req)
 		if !ok {
 			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 			return
@@ -1408,6 +1446,18 @@ func (r *routerState) createVM() http.HandlerFunc {
 			writeJSONError(w, http.StatusInternalServerError, "failed to create VM")
 			return
 		}
+		_ = audit.RecordEvent(req.Context(), r.db, audit.Event{
+			EventType:  "vm_lifecycle",
+			EntityType: "vm",
+			EntityID:   domainInfo.UUID,
+			UserID:     &user.ID,
+			Payload: map[string]string{
+				"action":     "create",
+				"from_state": "",
+				"to_state":   string(domainInfo.State),
+				"host_id":    hostID,
+			},
+		})
 		writeJSON(w, http.StatusCreated, createVMResponse{
 			HostID:      hostID,
 			LibvirtUUID: domainInfo.UUID,
@@ -1783,7 +1833,7 @@ type vmCloneRequest struct {
 
 func (r *routerState) vmClone() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		_, ok := mw.UserFromContext(req)
+		user, ok := mw.UserFromContext(req)
 		if !ok {
 			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 			return
@@ -1943,6 +1993,19 @@ func (r *routerState) vmClone() http.HandlerFunc {
 			writeJSONError(w, http.StatusInternalServerError, "failed to create cloned VM")
 			return
 		}
+		_ = audit.RecordEvent(req.Context(), r.db, audit.Event{
+			EventType:  "vm_lifecycle",
+			EntityType: "vm",
+			EntityID:   domainInfo.UUID,
+			UserID:     &user.ID,
+			Payload: map[string]string{
+				"action":      "clone",
+				"from_state":  string(state),
+				"to_state":    string(domainInfo.State),
+				"host_id":     targetHostID,
+				"source_uuid": sourceUUID,
+			},
+		})
 		writeJSON(w, http.StatusCreated, createVMResponse{
 			HostID:      targetHostID,
 			LibvirtUUID: domainInfo.UUID,

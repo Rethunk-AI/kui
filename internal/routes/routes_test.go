@@ -117,6 +117,52 @@ jwt_secret: "` + testJWTSecret + `"
 	}
 }
 
+func TestSetupStatus_DBMissing(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            nil,
+		Config:        loaded,
+		ConfigPath:    configPath,
+		ConfigPresent: true,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body struct {
+		SetupRequired bool    `json:"setup_required"`
+		Reason        *string `json:"reason"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.SetupRequired || body.Reason == nil || *body.Reason != "db_missing" {
+		t.Fatalf("expected setup_required=true, reason=db_missing, got %+v", body)
+	}
+}
+
 func TestSetupComplete_AndLogin(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
@@ -387,6 +433,27 @@ jwt_secret: "` + testJWTSecret + `"
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 when config present, got %d", rec.Code)
+	}
+}
+
+func TestSanitizeValidationError(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"passes through", "connection refused", "connection refused"},
+		{"redacts path", "Failed to open /home/user/.ssh/id_rsa: permission denied", "Failed to open [path redacted]: permission denied"},
+		{"redacts path", "error: /var/run/libvirt/libvirt-sock: No such file", "error: [path redacted]: No such file"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeValidationError(tt.in)
+			if got != tt.want {
+				t.Errorf("sanitizeValidationError(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
 	}
 }
 

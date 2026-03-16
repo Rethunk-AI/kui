@@ -31,6 +31,7 @@ import (
 	"github.com/kui/kui/internal/broadcaster"
 	"github.com/kui/kui/internal/config"
 	"github.com/kui/kui/internal/db"
+	"github.com/kui/kui/internal/eventsource"
 	"github.com/kui/kui/internal/libvirtconn"
 	mw "github.com/kui/kui/internal/middleware"
 	"github.com/kui/kui/internal/template"
@@ -249,6 +250,11 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Post("/api/templates", state.createTemplate())
 
 	router.Get("/api/events", state.events())
+
+	if state.config != nil && len(state.config.Hosts) > 0 && bc != nil {
+		mon := eventsource.NewMonitor(state.config, bc, logger)
+		go mon.Run(context.Background())
+	}
 
 	webFS := resolveWebFS()
 	router.Get("/", staticHandler(webFS))
@@ -1502,6 +1508,20 @@ func (r *routerState) getTemplates() http.HandlerFunc {
 				defaultNet = r.config.VMDefaults.Network
 			}
 		}
+		defaultHostID := ""
+		if r.config != nil {
+			defaultHostID = strings.TrimSpace(r.config.DefaultHost)
+		}
+		var conn libvirtconn.Connector
+		if defaultHostID != "" {
+			var errConn error
+			conn, errConn = r.getConnectorForHost(req.Context(), defaultHostID)
+			if errConn != nil {
+				conn = nil
+			} else {
+				defer conn.Close()
+			}
+		}
 		out := make([]templateListItem, 0, len(list))
 		for _, t := range list {
 			cpu, ram, net := t.CPU, t.RAMMB, t.Network
@@ -1514,14 +1534,25 @@ func (r *routerState) getTemplates() http.HandlerFunc {
 			if net == "" {
 				net = defaultNet
 			}
+			baseImageValid := false
+			if conn != nil && strings.TrimSpace(t.BaseImage.Pool) != "" {
+				if err := conn.ValidatePool(req.Context(), t.BaseImage.Pool); err == nil {
+					if strings.TrimSpace(t.BaseImage.Path) != "" {
+						baseImageValid = conn.ValidatePath(req.Context(), t.BaseImage.Pool, t.BaseImage.Path) == nil
+					} else if strings.TrimSpace(t.BaseImage.Volume) != "" {
+						baseImageValid = conn.ValidateVolume(req.Context(), t.BaseImage.Pool, t.BaseImage.Volume) == nil
+					}
+				}
+			}
 			out = append(out, templateListItem{
-				TemplateID: t.TemplateID,
-				Name:       t.Name,
-				BaseImage:  t.BaseImage,
-				CPU:        cpu,
-				RAMMB:      ram,
-				Network:    net,
-				CreatedAt:  t.CreatedAt,
+				TemplateID:     t.TemplateID,
+				Name:           t.Name,
+				BaseImage:      t.BaseImage,
+				CPU:            cpu,
+				RAMMB:          ram,
+				Network:        net,
+				CreatedAt:      t.CreatedAt,
+				BaseImageValid: baseImageValid,
 			})
 		}
 		writeJSON(w, http.StatusOK, out)
@@ -1529,13 +1560,14 @@ func (r *routerState) getTemplates() http.HandlerFunc {
 }
 
 type templateListItem struct {
-	TemplateID string             `json:"template_id"`
-	Name       string             `json:"name"`
-	BaseImage  template.BaseImage `json:"base_image"`
-	CPU        int                `json:"cpu"`
-	RAMMB      int                `json:"ram_mb"`
-	Network    string             `json:"network"`
-	CreatedAt  string             `json:"created_at"`
+	TemplateID      string             `json:"template_id"`
+	Name            string             `json:"name"`
+	BaseImage       template.BaseImage `json:"base_image"`
+	CPU             int                `json:"cpu"`
+	RAMMB           int                `json:"ram_mb"`
+	Network         string             `json:"network"`
+	CreatedAt       string             `json:"created_at"`
+	BaseImageValid  bool               `json:"base_image_valid"`
 }
 
 type createTemplateRequest struct {
@@ -2044,7 +2076,17 @@ func (r *routerState) getConnectorForHost(ctx context.Context, hostID string) (l
 			if h.Keyfile != nil {
 				keyfile = *h.Keyfile
 			}
-			return libvirtconn.Connect(ctx, h.URI, keyfile)
+			conn, err := libvirtconn.Connect(ctx, h.URI, keyfile)
+			if err != nil {
+				if r.broadcaster != nil && !errors.Is(err, libvirtconn.ErrLibvirtDisabled) {
+					r.broadcaster.Broadcast(broadcaster.Event{
+						Type: "host.offline",
+						Data: map[string]string{"host_id": hostID, "reason": err.Error()},
+					})
+				}
+				return nil, err
+			}
+			return conn, nil
 		}
 	}
 	return nil, errors.New("host not found")
@@ -2170,6 +2212,9 @@ func (r *routerState) setupStatus() http.HandlerFunc {
 		if !r.configPresent || r.config == nil {
 			value := "config_missing"
 			reason = &value
+		} else if r.db == nil {
+			value := "db_missing"
+			reason = &value
 		} else {
 			hasAdmin, err := r.hasAdminUser(req.Context())
 			if err != nil {
@@ -2207,18 +2252,18 @@ func (r *routerState) validateHost() http.HandlerFunc {
 
 		conn, err := libvirtconn.Connect(req.Context(), payload.URI, payload.Keyfile)
 		if err != nil {
-			r.logger.Debug("validate-host failed", "host_id", payload.HostID)
+			r.logger.Debug("validate-host failed", "host_id", payload.HostID, "error", err)
 			writeJSON(w, http.StatusOK, validateHostResponse{
 				Valid: false,
-				Error: "validation failed",
+				Error: sanitizeValidationError(err.Error()),
 			})
 			return
 		}
 		if err := conn.Close(); err != nil {
-			r.logger.Debug("validate-host close failed", "host_id", payload.HostID)
+			r.logger.Debug("validate-host close failed", "host_id", payload.HostID, "error", err)
 			writeJSON(w, http.StatusOK, validateHostResponse{
 				Valid: false,
-				Error: "validation failed",
+				Error: sanitizeValidationError(err.Error()),
 			})
 			return
 		}
@@ -2320,7 +2365,7 @@ func (r *routerState) setupComplete() http.HandlerFunc {
 			writeJSONError(w, http.StatusInternalServerError, "failed to write config")
 			return
 		}
-		if err := os.Chmod(r.configPath, 0o600); err != nil {
+		if err := os.Chmod(r.configPath, 0o444); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "failed to update config permissions")
 			return
 		}
@@ -2397,6 +2442,18 @@ func (r *routerState) configuredGitPath() string {
 		return r.gitPath
 	}
 	return "/var/lib/kui"
+}
+
+// sanitizeValidationError redacts paths and credentials from libvirt/connection errors.
+func sanitizeValidationError(msg string) string {
+	const maxLen = 256
+	// Redact absolute file paths (at least two path segments) to avoid leaking keyfile paths.
+	pathPattern := regexp.MustCompile(`/[^/\s]+/[^\s:]*`)
+	sanitized := pathPattern.ReplaceAllString(msg, "[path redacted]")
+	if len(sanitized) > maxLen {
+		sanitized = sanitized[:maxLen-3] + "..."
+	}
+	return strings.TrimSpace(sanitized)
 }
 
 func decodeJSON(body io.Reader, target any) error {

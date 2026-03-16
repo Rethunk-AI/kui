@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -157,5 +158,18 @@ func ListTemplates(gitBase string) ([]TemplateInfo, error) {
 			CreatedAt:  createdAt,
 		})
 	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i].CreatedAt, out[j].CreatedAt
+		if a == "" && b == "" {
+			return out[i].TemplateID < out[j].TemplateID
+		}
+		if a == "" {
+			return false
+		}
+		if b == "" {
+			return true
+		}
+		return a > b
+	})
 	return out, nil
 }

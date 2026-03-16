@@ -22,6 +22,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
+	"libvirt.org/go/libvirtxml"
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
 
@@ -222,6 +223,7 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Get("/api/hosts/{host_id}/networks", state.getHostNetworks())
 
 	router.Get("/api/hosts/{host_id}/vms/{libvirt_uuid}", state.getVMDetail())
+	router.Patch("/api/hosts/{host_id}/vms/{libvirt_uuid}", state.patchVMConfig())
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/start", state.vmStart())
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/stop", state.vmStop())
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/pause", state.vmPause())
@@ -700,6 +702,261 @@ func (r *routerState) getVMDetail() http.HandlerFunc {
 			UpdatedAt:         now,
 		})
 	}
+}
+
+type patchVMConfigRequest struct {
+	DisplayName       *string `json:"display_name"`
+	ConsolePreference *string `json:"console_preference"`
+	CPU               int     `json:"cpu"`
+	RAMMB             int     `json:"ram_mb"`
+	Network           string  `json:"network"`
+}
+
+func (r *routerState) patchVMConfig() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		user, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		hostID := chi.URLParam(req, "host_id")
+		libvirtUUID := chi.URLParam(req, "libvirt_uuid")
+		if hostID == "" || libvirtUUID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id and libvirt_uuid required")
+			return
+		}
+		var payload patchVMConfigRequest
+		if err := decodeJSON(req.Body, &payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		meta, err := r.db.GetVMMetadata(req.Context(), hostID, libvirtUUID)
+		if err != nil || meta == nil || !meta.Claimed {
+			writeJSONError(w, http.StatusNotFound, "VM not found")
+			return
+		}
+		conn, err := r.getConnectorForHost(req.Context(), hostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		domainEdits := payload.CPU > 0 || payload.RAMMB > 0 || strings.TrimSpace(payload.Network) != ""
+		if domainEdits {
+			state, err := conn.GetState(req.Context(), libvirtUUID)
+			if err != nil {
+				writeJSONError(w, http.StatusNotFound, "VM not found")
+				return
+			}
+			if state != libvirtconn.DomainStateShutoff {
+				writeJSONError(w, http.StatusBadRequest, "VM must be stopped to change cpu, ram_mb, or network")
+				return
+			}
+		}
+		beforeMeta := map[string]interface{}{
+			"display_name":       "",
+			"console_preference": "",
+		}
+		if meta.DisplayName.Valid {
+			beforeMeta["display_name"] = meta.DisplayName.String
+		}
+		if meta.ConsolePreference.Valid {
+			beforeMeta["console_preference"] = meta.ConsolePreference.String
+		}
+		var beforeXML, afterXML string
+		domainXMLChanged := false
+		if domainEdits {
+			beforeXML, err = conn.GetDomainXML(req.Context(), libvirtUUID)
+			if err != nil {
+				r.logger.Error("get domain XML failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to update VM")
+				return
+			}
+			if strings.TrimSpace(payload.Network) != "" {
+				networks, err := conn.ListNetworks(req.Context())
+				if err != nil {
+					writeJSONError(w, http.StatusInternalServerError, "failed to list networks")
+					return
+				}
+				found := false
+				for _, n := range networks {
+					if n.Name == payload.Network {
+						found = true
+						break
+					}
+				}
+				if !found {
+					writeJSONError(w, http.StatusConflict, "network invalid or does not exist on host")
+					return
+				}
+			}
+			var dom libvirtxml.Domain
+			if err := dom.Unmarshal(beforeXML); err != nil {
+				r.logger.Error("unmarshal domain XML failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to update VM")
+				return
+			}
+			if payload.CPU > 0 {
+				if dom.VCPU == nil {
+					dom.VCPU = &libvirtxml.DomainVCPU{}
+				}
+				dom.VCPU.Value = uint(payload.CPU)
+				domainXMLChanged = true
+			}
+			if payload.RAMMB > 0 {
+				kiB := uint(payload.RAMMB) * 1024
+				if dom.Memory == nil {
+					dom.Memory = &libvirtxml.DomainMemory{Unit: "KiB"}
+				}
+				dom.Memory.Value = kiB
+				dom.Memory.Unit = "KiB"
+				if dom.CurrentMemory != nil {
+					dom.CurrentMemory.Value = kiB
+					dom.CurrentMemory.Unit = "KiB"
+				}
+				domainXMLChanged = true
+			}
+			if strings.TrimSpace(payload.Network) != "" {
+				if dom.Devices != nil {
+					for i := range dom.Devices.Interfaces {
+						if dom.Devices.Interfaces[i].Source != nil && dom.Devices.Interfaces[i].Source.Network != nil {
+							dom.Devices.Interfaces[i].Source.Network.Network = payload.Network
+							domainXMLChanged = true
+							break
+						}
+					}
+				}
+			}
+			if domainXMLChanged {
+				afterXML, err = dom.Marshal()
+				if err != nil {
+					r.logger.Error("marshal domain XML failed", "error", err)
+					writeJSONError(w, http.StatusInternalServerError, "failed to update VM")
+					return
+				}
+				if _, err := conn.DefineXML(req.Context(), afterXML); err != nil {
+					r.logger.Error("define domain XML failed", "error", err)
+					writeJSONError(w, http.StatusInternalServerError, "failed to update VM")
+					return
+				}
+			}
+		}
+		disp, cons := payload.DisplayName, payload.ConsolePreference
+		if disp != nil {
+			s := strings.TrimSpace(*disp)
+			disp = &s
+		}
+		if cons != nil {
+			s := strings.TrimSpace(*cons)
+			cons = &s
+		}
+		if disp != nil || cons != nil {
+			if err := r.db.UpdateVMMetadata(req.Context(), hostID, libvirtUUID, disp, cons); err != nil {
+				r.logger.Error("update vm_metadata failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to update VM")
+				return
+			}
+		}
+		meta, _ = r.db.GetVMMetadata(req.Context(), hostID, libvirtUUID)
+		domainInfo, _ := conn.LookupByUUID(req.Context(), libvirtUUID)
+		now := time.Now().UTC().Format(time.RFC3339)
+		displayName := domainInfo.Name
+		if meta != nil && meta.DisplayName.Valid && meta.DisplayName.String != "" {
+			displayName = meta.DisplayName.String
+		}
+		var consolePref, lastAccess *string
+		if meta != nil && meta.ConsolePreference.Valid {
+			cp := meta.ConsolePreference.String
+			consolePref = &cp
+		}
+		lastAccess = &now
+		updatedAt := now
+		if meta != nil {
+			updatedAt = meta.UpdatedAt
+		}
+		if domainXMLChanged || disp != nil || cons != nil {
+			afterMeta := map[string]interface{}{
+				"display_name":       displayName,
+				"console_preference": "",
+			}
+			if meta != nil && meta.ConsolePreference.Valid {
+				afterMeta["console_preference"] = meta.ConsolePreference.String
+			}
+			diffContent := vmConfigChangeDiff(beforeMeta, afterMeta, beforeXML, afterXML, domainXMLChanged)
+			ts := time.Now().UTC().Format(audit.TimestampFormat)
+			diffPath := fmt.Sprintf("audit/vm/%s/%s/%s.diff", hostID, libvirtUUID, ts)
+			userID := user.ID
+			ev := audit.Event{
+				EventType:  "vm_config_change",
+				EntityType: "vm",
+				EntityID:   libvirtUUID,
+				UserID:     &userID,
+				Payload: map[string]interface{}{
+					"host_id": hostID,
+					"changed": map[string]bool{
+						"display_name":       disp != nil,
+						"console_preference": cons != nil,
+						"domain_xml":         domainXMLChanged,
+					},
+				},
+			}
+			if err := audit.RecordEventWithDiff(req.Context(), r.db, r.configuredGitPath(), ev, diffPath, diffContent); err != nil {
+				r.logger.Error("audit vm_config_change failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to record audit")
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, vmDetailResponse{
+			HostID:            hostID,
+			LibvirtUUID:       libvirtUUID,
+			DisplayName:       &displayName,
+			Claimed:           true,
+			Status:            string(domainInfo.State),
+			ConsolePreference: consolePref,
+			LastAccess:        lastAccess,
+			CreatedAt:         meta.CreatedAt,
+			UpdatedAt:         updatedAt,
+		})
+	}
+}
+
+func vmConfigChangeDiff(beforeMeta, afterMeta map[string]interface{}, beforeXML, afterXML string, domainChanged bool) string {
+	var sb strings.Builder
+	sb.WriteString("--- vm_metadata (before)\n")
+	sb.WriteString("+++ vm_metadata (after)\n")
+	sb.WriteString("@@ -1,2 +1,2 @@\n")
+	sb.WriteString(fmt.Sprintf("-display_name: %v\n", beforeMeta["display_name"]))
+	sb.WriteString(fmt.Sprintf("-console_preference: %v\n", beforeMeta["console_preference"]))
+	sb.WriteString(fmt.Sprintf("+display_name: %v\n", afterMeta["display_name"]))
+	sb.WriteString(fmt.Sprintf("+console_preference: %v\n", afterMeta["console_preference"]))
+	if domainChanged && beforeXML != "" && afterXML != "" {
+		sb.WriteString("\n--- domain.xml (before)\n")
+		sb.WriteString("+++ domain.xml (after)\n")
+		sb.WriteString(unifiedDiffLines(beforeXML, afterXML))
+	}
+	return sb.String()
+}
+
+func unifiedDiffLines(before, after string) string {
+	beforeLines := strings.Split(before, "\n")
+	afterLines := strings.Split(after, "\n")
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("@@ -1,%d +1,%d @@\n", len(beforeLines), len(afterLines)))
+	for _, l := range beforeLines {
+		sb.WriteString("-")
+		sb.WriteString(l)
+		sb.WriteString("\n")
+	}
+	for _, l := range afterLines {
+		sb.WriteString("+")
+		sb.WriteString(l)
+		sb.WriteString("\n")
+	}
+	return sb.String()
 }
 
 func (r *routerState) vmLifecycleOp(op string, fn func(conn libvirtconn.Connector, ctx context.Context, uuid string) error) http.HandlerFunc {

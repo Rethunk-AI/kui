@@ -177,6 +177,42 @@ func (d *DB) InsertVMMetadata(ctx context.Context, hostID, libvirtUUID string, c
 	return nil
 }
 
+// UpdateVMMetadata updates display_name and/or console_preference for the given host_id and libvirt_uuid.
+// Nil values are not updated.
+func (d *DB) UpdateVMMetadata(ctx context.Context, hostID, libvirtUUID string, displayName, consolePreference *string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	if displayName != nil && consolePreference != nil {
+		_, err := d.SQL.ExecContext(ctx, `UPDATE vm_metadata SET display_name = ?, console_preference = ?, last_access = ?, updated_at = ? WHERE host_id = ? AND libvirt_uuid = ?`,
+			*displayName, *consolePreference, now, now, hostID, libvirtUUID)
+		if err != nil {
+			return fmt.Errorf("update vm_metadata: %w", err)
+		}
+		return nil
+	}
+	if displayName != nil {
+		_, err := d.SQL.ExecContext(ctx, `UPDATE vm_metadata SET display_name = ?, last_access = ?, updated_at = ? WHERE host_id = ? AND libvirt_uuid = ?`,
+			*displayName, now, now, hostID, libvirtUUID)
+		if err != nil {
+			return fmt.Errorf("update vm_metadata: %w", err)
+		}
+		return nil
+	}
+	if consolePreference != nil {
+		_, err := d.SQL.ExecContext(ctx, `UPDATE vm_metadata SET console_preference = ?, last_access = ?, updated_at = ? WHERE host_id = ? AND libvirt_uuid = ?`,
+			*consolePreference, now, now, hostID, libvirtUUID)
+		if err != nil {
+			return fmt.Errorf("update vm_metadata: %w", err)
+		}
+		return nil
+	}
+	_, err := d.SQL.ExecContext(ctx, `UPDATE vm_metadata SET last_access = ?, updated_at = ? WHERE host_id = ? AND libvirt_uuid = ?`,
+		now, now, hostID, libvirtUUID)
+	if err != nil {
+		return fmt.Errorf("update vm_metadata: %w", err)
+	}
+	return nil
+}
+
 // UpsertVMMetadataClaim inserts or updates vm_metadata for claim: sets claimed=1, display_name, last_access.
 func (d *DB) UpsertVMMetadataClaim(ctx context.Context, hostID, libvirtUUID string, displayName string) error {
 	now := time.Now().UTC().Format(time.RFC3339)

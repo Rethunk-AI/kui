@@ -60,10 +60,10 @@
 | Task ID | Spec | Description | Status |
 |---------|------|-------------|--------|
 | T8a | spec-vm-lifecycle-create | Discovery: GET /api/hosts/{id}/pools, volumes, networks | DONE |
-| T8b | spec-vm-lifecycle-create | GET /api/vms list (flat + orphans) | TODO |
-| T8c | spec-vm-lifecycle-create | VM detail, lifecycle (start/stop/pause/resume/destroy) | TODO |
-| T8d | spec-vm-lifecycle-create | POST /api/vms create, clone, claim | TODO |
-| T8e | spec-vm-lifecycle-create | PATCH config edit, vm_config_change audit | TODO |
+| T8b | spec-vm-lifecycle-create | GET /api/vms list (flat + orphans) | DONE |
+| T8c | spec-vm-lifecycle-create | VM detail, lifecycle (start/stop/pause/resume/destroy) | DONE |
+| T8d | spec-vm-lifecycle-create | POST /api/vms create, clone, claim | DONE |
+| T8e | spec-vm-lifecycle-create | PATCH config edit, vm_config_change audit | DONE |
 
 ---
 
@@ -120,3 +120,5 @@ spec-libvirt-connector (T4) ─┘
 **2026-03-16:** spec-audit-integration T7 complete. Added internal/audit package (RecordEvent, RecordEventWithDiff), wired wizard_complete in setupComplete, wired auth events in login/logout. VM/template audit deferred until those specs land.
 
 **2026-03-16:** spec-vm-lifecycle-create T8a started. Added discovery endpoints: GET /api/hosts/{host_id}/pools, GET /api/hosts/{host_id}/pools/{pool_name}/volumes, GET /api/hosts/{host_id}/networks. Per spec §9.3.
+
+**2026-03-16:** spec-vm-lifecycle-create T8b–T8e complete. GET /api/vms (flat+orphans), VM detail+lifecycle (start/stop/pause/resume/destroy), POST create/clone/claim, PATCH config edit with vm_config_change audit.

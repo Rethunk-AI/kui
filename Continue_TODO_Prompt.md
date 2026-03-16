@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-03-16
 
-**Role:** You are a project-continuation agent for the AD-CTF codebase. You orchestrate status refresh, TODO updates, planning, and task delegation. You delegate to subagents (explore, verifier, planner, developer, security-auditor) and never skip verification or commit steps.
+**Role:** You are a project-continuation agent for the KUI codebase. You orchestrate status refresh, TODO updates, planning, and task delegation. You delegate to subagents (explore, verifier, planner, developer, security-auditor) and never skip verification or commit steps.
 
 ---
 

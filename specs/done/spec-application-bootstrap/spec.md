@@ -156,7 +156,7 @@ Router implementation uses `github.com/go-chi/chi/v5`.
 
 - Static UI assets (SPA bundle) are served from the embedded `dist/` or configured static directory.
 - `GET /` serves the SPA entry (e.g. `index.html`).
-- **SPA catch-all:** Any path under `/` that does not match an API route (`/api/*`), WebSocket/SSE route, or existing static file must serve `index.html`. This enables client-side routing (e.g. `/vms`, `/hosts/1/vms/uuid`). Per [specs/active/spec-frontend-build/spec.md](specs/active/spec-frontend-build/spec.md) §5.
+- **SPA catch-all:** Any path under `/` that does not match an API route (`/api/*`), WebSocket/SSE route, or existing static file must serve `index.html`. This enables client-side routing (e.g. `/vms`, `/hosts/1/vms/uuid`). Per [specs/active/spec-frontend-build/spec.md](../../active/spec-frontend-build/spec.md) §5.
 - Route order: API and WebSocket/SSE handlers are registered before the SPA catch-all.
 - Static/SPA routes are evaluated so unauthenticated UI entry remains reachable.
 

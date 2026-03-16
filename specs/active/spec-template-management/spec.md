@@ -14,7 +14,7 @@ KUI has no implementation-level template lifecycle contract, despite template st
 - Keeps Git as source of truth for template blueprint files while avoiding disk image commits.
 - Ensures template operations behave predictably via explicit pool resolution and base-image validation.
 
-The spec references [docs/prd/decision-log.md](../../docs/prd/decision-log.md), [docs/prd/architecture.md](../../docs/prd/architecture.md), and [specs/done/schema-storage/spec.md](../schema-storage/spec.md).
+The spec references [docs/prd/decision-log.md](../../docs/prd/decision-log.md), [docs/prd/architecture.md](../../docs/prd/architecture.md), and [specs/done/schema-storage/spec.md](../../done/schema-storage/spec.md).
 
 ## 2. Save-VM-as-Template Flow
 
@@ -132,7 +132,7 @@ Each list item includes:
 ## 4. Template Structure
 
 ### 4.1 Directory layout (canonical)
-From [schema-storage](../schema-storage/spec.md) and decision-log requirement:
+From [schema-storage](../../done/schema-storage/spec.md) and decision-log requirement:
 
 ```text
 <git_base>/templates/

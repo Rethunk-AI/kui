@@ -76,6 +76,9 @@ type Connector interface {
 	ValidatePool(ctx context.Context, pool string) error
 	ValidatePath(ctx context.Context, pool string, path string) error
 	ValidateVolume(ctx context.Context, pool string, name string) error
+
+	CreateVolumeFromXML(ctx context.Context, pool string, xml string) (StorageVolumeInfo, error)
+	CloneVolume(ctx context.Context, pool string, sourceName string, targetName string) error
 }
 
 // Connect opens a libvirt connection and returns a connection-scoped connector.
@@ -501,6 +504,83 @@ func (c *connector) ValidateVolume(ctx context.Context, pool string, name string
 	defer func() {
 		_ = volume.Free()
 	}()
+
+	return nil
+}
+
+func (c *connector) CreateVolumeFromXML(ctx context.Context, poolName string, xml string) (StorageVolumeInfo, error) {
+	if err := checkContext(ctx); err != nil {
+		return StorageVolumeInfo{}, err
+	}
+	if strings.TrimSpace(xml) == "" {
+		return StorageVolumeInfo{}, c.wrapErr("create volume", fmt.Errorf("volume XML is required"))
+	}
+
+	pool, err := c.lookupPool(ctx, "create volume", poolName)
+	if err != nil {
+		return StorageVolumeInfo{}, err
+	}
+	defer func() {
+		_ = pool.Free()
+	}()
+
+	vol, err := pool.CreateStorageVolFromXML(xml, 0)
+	if err != nil {
+		return StorageVolumeInfo{}, c.wrapErr("create volume from XML", err)
+	}
+	defer func() {
+		_ = vol.Free()
+	}()
+
+	name, err := vol.GetName()
+	if err != nil {
+		return StorageVolumeInfo{}, c.wrapErr("read created volume name", err)
+	}
+	path, err := vol.GetPath()
+	if err != nil {
+		return StorageVolumeInfo{}, c.wrapErr("read created volume path", err)
+	}
+	info, err := vol.GetInfo()
+	if err != nil {
+		return StorageVolumeInfo{}, c.wrapErr("read created volume info", err)
+	}
+
+	return StorageVolumeInfo{
+		Name:     name,
+		Path:     path,
+		Capacity: info.Capacity,
+	}, nil
+}
+
+func (c *connector) CloneVolume(ctx context.Context, poolName string, sourceName string, targetName string) error {
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	if strings.TrimSpace(sourceName) == "" || strings.TrimSpace(targetName) == "" {
+		return c.wrapErr("clone volume", fmt.Errorf("source and target volume names are required"))
+	}
+
+	pool, err := c.lookupPool(ctx, "clone volume", poolName)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = pool.Free()
+	}()
+
+	sourceVol, err := pool.LookupStorageVolByName(sourceName)
+	if err != nil {
+		return c.wrapErr("clone volume: lookup source", err)
+	}
+	defer func() {
+		_ = sourceVol.Free()
+	}()
+
+	cloneXML := fmt.Sprintf(`<volume><name>%s</name></volume>`, targetName)
+	_, err = pool.CreateStorageVolFromXMLFrom(cloneXML, sourceVol, 0)
+	if err != nil {
+		return c.wrapErr("clone volume", err)
+	}
 
 	return nil
 }

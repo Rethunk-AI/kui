@@ -11,6 +11,7 @@ const validJWTSecret = "0123456789abcdef0123456789abcdef"
 
 func TestLoad(t *testing.T) {
 	t.Parallel()
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config.yaml")
@@ -61,6 +62,7 @@ jwt_secret: "` + validJWTSecret + `"
 
 func TestLoadRejectsMissingHosts(t *testing.T) {
 	t.Parallel()
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "missing-hosts.yaml")
@@ -73,5 +75,39 @@ func TestLoadRejectsMissingHosts(t *testing.T) {
 
 	if _, err := Load(configPath); err == nil {
 		t.Fatal("expected missing hosts error")
+	}
+}
+
+func TestLoadRejectsMalformedKUI_SECURE_COOKIES(t *testing.T) {
+	// Do not run in parallel: env var affects other tests
+	t.Cleanup(func() { os.Unsetenv("KUI_SECURE_COOKIES") })
+	if err := os.Setenv("KUI_SECURE_COOKIES", "invalid"); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	configContent := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + validJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := Load(configPath); err == nil {
+		t.Fatal("expected KUI_SECURE_COOKIES validation error")
+	}
+}
+
+func TestHostKeyfileEnvVarUsesKUI_HOST_Prefix(t *testing.T) {
+	t.Parallel()
+
+	if got := hostKeyfileEnvVar("local"); got != "KUI_HOST_LOCAL_KEYFILE" {
+		t.Fatalf("hostKeyfileEnvVar(local) = %q, want KUI_HOST_LOCAL_KEYFILE", got)
+	}
+	if got := hostKeyfileEnvVar("remote1"); got != "KUI_HOST_REMOTE1_KEYFILE" {
+		t.Fatalf("hostKeyfileEnvVar(remote1) = %q, want KUI_HOST_REMOTE1_KEYFILE", got)
 	}
 }

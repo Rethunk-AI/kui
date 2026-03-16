@@ -11,10 +11,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -39,13 +41,15 @@ type RouterOptions struct {
 }
 
 type routerState struct {
-	logger        *slog.Logger
-	db            *db.DB
-	config        *config.Config
-	configPath    string
-	configPresent bool
-	dbPath        string
-	gitPath       string
+	logger          *slog.Logger
+	db              *db.DB
+	config          *config.Config
+	configPath      string
+	configPresent   bool
+	dbPath          string
+	gitPath         string
+	setupCompleted  bool
+	setupCompletedMu sync.Mutex
 }
 
 type setupStatusResponse struct {
@@ -146,14 +150,23 @@ func NewRouter(opts RouterOptions) http.Handler {
 
 	sessionTimeout := 24 * time.Hour
 	secret := ""
+	secureCookies := true
+	allowedOrigins := []string{"http://localhost:5173"}
 	if opts.Config != nil {
 		sessionTimeout = time.Duration(opts.Config.Session.Timeout)
 		secret = opts.Config.JWTSecret
+		if opts.Config.Session.SecureCookies != nil {
+			secureCookies = *opts.Config.Session.SecureCookies
+		}
+		if len(opts.Config.CORS.AllowedOrigins) > 0 {
+			allowedOrigins = opts.Config.CORS.AllowedOrigins
+		}
 	}
 
 	router := chi.NewRouter()
 	router.Use(mw.RequestID())
 	router.Use(mw.Logging(logger))
+	router.Use(mw.CORS(allowedOrigins))
 	router.Use(mw.Recovery(logger))
 	router.Use(mw.Auth(secret, mw.AuthOptions{
 		SkipExactPaths: []string{"/", "/api/auth/login"},
@@ -165,7 +178,7 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("KUI API"))
 	})
-	router.Post("/api/auth/login", state.login(sessionTimeout, secret))
+	router.Post("/api/auth/login", state.login(sessionTimeout, secret, secureCookies))
 	router.Get("/api/setup/status", state.setupStatus())
 	router.Post("/api/setup/validate-host", state.validateHost())
 	router.Post("/api/setup/complete", state.setupComplete())
@@ -175,10 +188,18 @@ func NewRouter(opts RouterOptions) http.Handler {
 	return router
 }
 
-func (r *routerState) login(sessionTimeout time.Duration, secret string) http.HandlerFunc {
+func (r *routerState) login(sessionTimeout time.Duration, secret string, secureCookies bool) http.HandlerFunc {
+	loginLimiter := newLoginRateLimiter(5, time.Minute)
 	return func(w http.ResponseWriter, req *http.Request) {
 		if secret == "" {
 			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		clientIP := clientIPFromRequest(req)
+		if !loginLimiter.allow(clientIP) {
+			r.logger.Warn("login rate limit exceeded", "ip", clientIP)
+			writeJSONError(w, http.StatusTooManyRequests, "too many login attempts")
 			return
 		}
 
@@ -194,10 +215,14 @@ func (r *routerState) login(sessionTimeout time.Duration, secret string) http.Ha
 
 		record, err := r.findUserByUsername(req.Context(), payload.Username)
 		if err != nil {
+			loginLimiter.recordFailure(clientIP)
+			r.logger.Warn("login failed", "ip", clientIP, "username", payload.Username)
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
 		if err := bcrypt.CompareHashAndPassword([]byte(record.PasswordHash), []byte(payload.Password)); err != nil {
+			loginLimiter.recordFailure(clientIP)
+			r.logger.Warn("login failed", "ip", clientIP, "username", payload.Username)
 			writeJSONError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
@@ -210,12 +235,13 @@ func (r *routerState) login(sessionTimeout time.Duration, secret string) http.Ha
 			return
 		}
 
+		secure := secureCookies || req.TLS != nil
 		http.SetCookie(w, &http.Cookie{
 			Name:     mw.SessionCookieName,
 			Value:    token,
 			Path:     "/",
 			HttpOnly: true,
-			Secure:   req.TLS != nil,
+			Secure:   secure,
 			SameSite: http.SameSiteLaxMode,
 			MaxAge:   int(sessionTimeout.Seconds()),
 			Expires:  expiresAt,
@@ -285,6 +311,10 @@ func (r *routerState) setupStatus() http.HandlerFunc {
 
 func (r *routerState) validateHost() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
+		if r.configPresent {
+			writeJSONError(w, http.StatusForbidden, "validate-host is only available during setup")
+			return
+		}
 		var payload validateHostRequest
 		if err := decodeJSON(req.Body, &payload); err != nil {
 			writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -297,16 +327,18 @@ func (r *routerState) validateHost() http.HandlerFunc {
 
 		conn, err := libvirtconn.Connect(req.Context(), payload.URI, payload.Keyfile)
 		if err != nil {
+			r.logger.Debug("validate-host failed", "host_id", payload.HostID, "err", err)
 			writeJSON(w, http.StatusOK, validateHostResponse{
 				Valid: false,
-				Error: err.Error(),
+				Error: "validation failed",
 			})
 			return
 		}
 		if err := conn.Close(); err != nil {
+			r.logger.Debug("validate-host close failed", "host_id", payload.HostID, "err", err)
 			writeJSON(w, http.StatusOK, validateHostResponse{
 				Valid: false,
-				Error: err.Error(),
+				Error: "validation failed",
 			})
 			return
 		}
@@ -352,12 +384,14 @@ func (r *routerState) setupComplete() http.HandlerFunc {
 			return
 		}
 
-		hasAdmin, err := r.hasAdminUser(req.Context())
-		if err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "failed to evaluate setup state")
+		r.setupCompletedMu.Lock()
+		alreadyDone := r.setupCompleted
+		r.setupCompletedMu.Unlock()
+		if alreadyDone {
+			writeJSONError(w, http.StatusConflict, "setup already complete")
 			return
 		}
-		if r.configPresent && hasAdmin {
+		if r.configPresent {
 			writeJSONError(w, http.StatusConflict, "setup already complete")
 			return
 		}
@@ -402,10 +436,14 @@ func (r *routerState) setupComplete() http.HandlerFunc {
 			writeJSONError(w, http.StatusInternalServerError, "failed to write config")
 			return
 		}
-		if err := os.Chmod(r.configPath, 0o444); err != nil {
+		if err := os.Chmod(r.configPath, 0o600); err != nil {
 			writeJSONError(w, http.StatusInternalServerError, "failed to update config permissions")
 			return
 		}
+
+		r.setupCompletedMu.Lock()
+		r.setupCompleted = true
+		r.setupCompletedMu.Unlock()
 
 		w.WriteHeader(http.StatusCreated)
 	}
@@ -560,6 +598,65 @@ func writeConfigFile(path string, payload any) error {
 		return fmt.Errorf("write config temp file: %w", err)
 	}
 	return os.Rename(tmp, path)
+}
+
+func clientIPFromRequest(r *http.Request) string {
+	if x := r.Header.Get("X-Real-IP"); x != "" {
+		return strings.TrimSpace(strings.Split(x, ",")[0])
+	}
+	if x := r.Header.Get("X-Forwarded-For"); x != "" {
+		return strings.TrimSpace(strings.Split(x, ",")[0])
+	}
+	host, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if host != "" {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+type loginRateLimiter struct {
+	mu        sync.Mutex
+	failures  map[string][]time.Time
+	limit     int
+	window    time.Duration
+}
+
+func newLoginRateLimiter(limit int, window time.Duration) *loginRateLimiter {
+	return &loginRateLimiter{
+		failures: make(map[string][]time.Time),
+		limit:    limit,
+		window:   window,
+	}
+}
+
+func (l *loginRateLimiter) allow(ip string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.pruneLocked(ip)
+	return len(l.failures[ip]) < l.limit
+}
+
+func (l *loginRateLimiter) recordFailure(ip string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now().UTC()
+	l.failures[ip] = append(l.failures[ip], now)
+	l.pruneLocked(ip)
+}
+
+func (l *loginRateLimiter) pruneLocked(ip string) {
+	cutoff := time.Now().UTC().Add(-l.window)
+	var kept []time.Time
+	for _, t := range l.failures[ip] {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	if len(kept) == 0 {
+		delete(l.failures, ip)
+	} else {
+		l.failures[ip] = kept
+	}
 }
 
 func signJWT(user userRecord, now time.Time, expiresAt time.Time, secret string) (string, error) {

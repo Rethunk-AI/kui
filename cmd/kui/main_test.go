@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -119,6 +120,66 @@ func TestSetupMode(t *testing.T) {
 	}
 	if payload.Reason == nil || *payload.Reason != "config_missing" {
 		t.Fatalf("expected reason config_missing, got %#v", payload.Reason)
+	}
+}
+
+func TestSetupCompleteIdempotent(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "idempotent.db")
+	configPath := filepath.Join(tempDir, "config.yaml")
+	t.Cleanup(func() {
+		_ = os.Unsetenv("KUI_DB_PATH")
+		_ = os.Unsetenv("KUI_GIT_PATH")
+	})
+	_ = os.Setenv("KUI_DB_PATH", dbPath)
+	_ = os.Setenv("KUI_GIT_PATH", tempDir)
+
+	opts, err := parseFlags([]string{"--config", configPath, "--listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	app, err := buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("build application: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = app.shutdown(ctx)
+	}()
+
+	listener, err := app.startServer(opts.listen, "", "")
+	if err != nil {
+		t.Fatalf("start server: %v", err)
+	}
+
+	body := []byte(`{"admin":{"username":"admin","password":"secret"},"hosts":[{"id":"local","uri":"qemu:///system","keyfile":null}],"default_host":"local"}`)
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/api/setup/complete", listener.Addr().String()), nil)
+	req.Body = io.NopCloser(strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp1, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("first setup/complete: %v", err)
+	}
+	resp1.Body.Close()
+	if resp1.StatusCode != http.StatusCreated {
+		t.Fatalf("first setup/complete: expected 201, got %d", resp1.StatusCode)
+	}
+
+	req2, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/api/setup/complete", listener.Addr().String()), nil)
+	req2.Body = io.NopCloser(strings.NewReader(string(body)))
+	req2.Header.Set("Content-Type", "application/json")
+
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("second setup/complete: %v", err)
+	}
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusConflict {
+		t.Fatalf("second setup/complete: expected 409 Conflict, got %d", resp2.StatusCode)
 	}
 }
 

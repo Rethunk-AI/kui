@@ -79,6 +79,9 @@ type Connector interface {
 	ValidatePool(ctx context.Context, pool string) error
 	ValidatePath(ctx context.Context, pool string, path string) error
 	ValidateVolume(ctx context.Context, pool string, name string) error
+
+	CreateVolumeFromXML(ctx context.Context, pool string, xml string) (StorageVolumeInfo, error)
+	CloneVolume(ctx context.Context, pool string, sourceName string, targetName string) error
 }
 
 // ErrLibvirtDisabled is returned when the libvirt build tag is not set.

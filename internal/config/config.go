@@ -55,7 +55,8 @@ type Git struct {
 }
 
 type Session struct {
-	Timeout Duration `yaml:"timeout"`
+	Timeout       Duration `yaml:"timeout"`
+	SecureCookies *bool   `yaml:"secure_cookies"`
 }
 
 type VMLifecycle struct {
@@ -167,6 +168,10 @@ func applyDefaults(cfg *Config) {
 	if cfg.Session.Timeout == 0 {
 		cfg.Session.Timeout = defaultSessionTimeout
 	}
+	if cfg.Session.SecureCookies == nil {
+		trueVal := true
+		cfg.Session.SecureCookies = &trueVal
+	}
 	if cfg.VMLifecycle.GracefulStopTimeout == 0 {
 		cfg.VMLifecycle.GracefulStopTimeout = defaultGracefulStopTimeout
 	}
@@ -210,6 +215,13 @@ func applyEnvOverrides(cfg *Config) error {
 	if corsOrigins := strings.TrimSpace(os.Getenv("KUI_CORS_ORIGINS")); corsOrigins != "" {
 		cfg.CORS.AllowedOrigins = splitCommaList(corsOrigins)
 	}
+	if v := strings.TrimSpace(os.Getenv("KUI_SECURE_COOKIES")); v != "" {
+		p := parseBoolPtr(v)
+		if p == nil {
+			return fmt.Errorf("invalid KUI_SECURE_COOKIES %q: must be true/false, 1/0, or yes/no", v)
+		}
+		cfg.Session.SecureCookies = p
+	}
 
 	applyHostKeyfileEnvOverrides(cfg)
 
@@ -246,7 +258,20 @@ func hostKeyfileEnvVar(hostID string) string {
 		}
 	}
 
-	return "KUI_" + strings.Trim(b.String(), "_") + "_KEYFILE"
+	return "KUI_HOST_" + strings.Trim(b.String(), "_") + "_KEYFILE"
+}
+
+func parseBoolPtr(s string) *bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "true", "1", "yes":
+		v := true
+		return &v
+	case "false", "0", "no":
+		v := false
+		return &v
+	default:
+		return nil
+	}
 }
 
 func splitCommaList(input string) []string {
@@ -286,7 +311,10 @@ func validate(cfg Config) error {
 	if strings.TrimSpace(cfg.VMDefaults.Network) == "" {
 		return errors.New("vm_defaults.network is required")
 	}
-	if cfg.JWTSecret != "" && len(cfg.JWTSecret) < 32 {
+	if strings.TrimSpace(cfg.JWTSecret) == "" {
+		return errors.New("jwt_secret is required")
+	}
+	if len(cfg.JWTSecret) < 32 {
 		return errors.New("jwt_secret must be at least 32 bytes")
 	}
 

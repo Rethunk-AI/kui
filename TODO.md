@@ -14,18 +14,11 @@
 | Spec integrity | pass (links fixed: schema-storage, spec-frontend-build) |
 | Doc integrity | pass |
 
-### Active Specs (6)
+### Active Specs (0)
 
-| spec_id | progress | blockers |
-|---------|----------|----------|
-| spec-audit-integration | spec ✓; impl DONE | — |
-| spec-vm-lifecycle-create | spec ✓; impl DONE | — |
-| spec-frontend-build | spec ✓; impl DONE | — |
-| spec-template-management | spec ✓; impl DONE | — |
-| spec-console-realtime | spec ✓; impl DONE | — |
-| spec-ui-deployment | spec ✓; impl DONE | — |
+All specs verified complete and moved to `specs/done/`.
 
-### Done Specs (8)
+### Done Specs (10)
 
 | spec_id | status |
 |---------|--------|
@@ -33,10 +26,12 @@
 | spec-console-realtime | DONE — SSE /api/events, noVNC /vnc, xterm serial /serial |
 | spec-frontend-build | DONE — Vite, web/, embed, SPA fallback |
 | spec-ui-deployment | DONE — systemd, TLS docs, checklist, host selector, alerts, VM list, Winbox console |
-| schema-storage | DONE — moved to specs/done/ |
-| spec-libvirt-connector | DONE — moved to specs/done/ |
-| spec-application-bootstrap | DONE — moved to specs/done/ |
-| api-auth | DONE — moved to specs/done/ |
+| spec-vm-lifecycle-create | DONE — discovery, lifecycle, create/clone/claim, PATCH config |
+| spec-template-management | DONE — list sort, base_image_valid, save flow, API |
+| schema-storage | DONE — SQLite, Git layout, config |
+| spec-libvirt-connector | DONE — Connector, domain/network/storage ops |
+| spec-application-bootstrap | DONE — main, config fallback to setup, middleware, routes |
+| api-auth | DONE — JWT, setup wizard, preferences, hosts |
 
 ---
 
@@ -121,7 +116,9 @@ spec-libvirt-connector (T4) ─┘
 
 ## Latest Work
 
-**2026-03-16:** Spec integrity fix. Resolved broken links in spec-template-management (schema-storage → `../../done/schema-storage/spec.md`) and spec-application-bootstrap (spec-frontend-build → `../../active/spec-frontend-build/spec.md`). Verifier now passes.
+**2026-03-16:** Spec verification and promotion. Moved 6 PASS specs from active → done (spec-audit-integration, spec-console-realtime, spec-frontend-build, spec-ui-deployment, spec-vm-lifecycle-create, spec-template-management). Fixed 2 PARTIAL specs via router→developer: (1) spec-template-management — list sort by created_at desc, base_image_valid in response; (2) spec-application-bootstrap — invalid config falls back to setup mode. All 10 specs now in specs/done/.
+
+**2026-03-16:** Spec integrity fix. Resolved broken links in spec-template-management (schema-storage → `../../done/schema-storage/spec.md`) and spec-application-bootstrap (spec-frontend-build → `../spec-frontend-build/spec.md`). Verifier now passes.
 
 **2026-03-16:** spec-audit-integration T7 complete. Added internal/audit package (RecordEvent, RecordEventWithDiff), wired wizard_complete in setupComplete, wired auth events in login/logout. VM/template audit deferred until those specs land.
 

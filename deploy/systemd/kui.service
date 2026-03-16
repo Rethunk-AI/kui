@@ -1,0 +1,22 @@
+[Unit]
+Description=KUI - Web-based KVM User Interface
+Documentation=https://github.com/kui/kui
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=5
+
+ExecStart=/usr/local/bin/kui --config /etc/kui/config.yaml
+
+# Runtime data: git templates, audit chain, SQLite DB
+# Must exist and be writable by the service user
+WorkingDirectory=/var/lib/kui
+
+# Optional: override config path via environment
+# Environment=KUI_CONFIG=/etc/kui/config.yaml
+
+[Install]
+WantedBy=multi-user.target

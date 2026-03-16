@@ -4,6 +4,7 @@ Web-based KVM User Interface for users who prefer a UI over CLI. Connects to lib
 
 ## Docs
 
+- [Systemd deployment](deploy/systemd/README.md)
 - [PRD](docs/prd.md)
 - [Architecture](docs/prd/architecture.md)
 - [Stack](docs/prd/stack.md)

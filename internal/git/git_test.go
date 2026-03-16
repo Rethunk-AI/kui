@@ -34,3 +34,16 @@ func TestInitCreatesLayout(t *testing.T) {
 		}
 	}
 }
+
+func TestInitIdempotent(t *testing.T) {
+	t.Parallel()
+
+	base := filepath.Join(t.TempDir(), "storage")
+
+	if err := Init(base); err != nil {
+		t.Fatalf("first init: %v", err)
+	}
+	if err := Init(base); err != nil {
+		t.Fatalf("second init (idempotent): %v", err)
+	}
+}

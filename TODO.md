@@ -22,13 +22,14 @@
 | spec-vm-lifecycle-create | spec ✓; impl DONE | — |
 | spec-frontend-build | spec ✓; impl DONE | — |
 | spec-template-management | spec ✓; impl DONE | — |
-| spec-console-realtime | spec ✓; impl 0% | — |
-| spec-ui-deployment | spec ✓; impl 0% | spec-console-realtime, spec-vm-lifecycle-create |
+| spec-console-realtime | spec ✓; impl DONE | — |
+| spec-ui-deployment | spec ✓; impl 0% | — |
 
-### Done Specs (5)
+### Done Specs (6)
 
 | spec_id | status |
 |---------|--------|
+| spec-console-realtime | DONE — SSE /api/events, noVNC /vnc, xterm serial /serial |
 | spec-frontend-build | DONE — Vite, web/, embed, SPA fallback |
 | schema-storage | DONE — moved to specs/done/ |
 | spec-libvirt-connector | DONE — moved to specs/done/ |
@@ -127,3 +128,5 @@ spec-libvirt-connector (T4) ─┘
 **2026-03-16:** spec-template-management complete. internal/template package, GET/POST /api/templates (list, save VM as template).
 
 **2026-03-16:** spec-frontend-build complete. Vite scaffold (web/), npm deps (noVNC, xterm, winbox), lib structure (api, console, winbox-adapter). Backend embed (web/embed.go), SPA fallback, KUI_WEB_DIR support. Makefile: `make all` builds web then Go.
+
+**2026-03-16:** spec-console-realtime complete. SSE GET /api/events (broadcaster, vm.state_changed, host.online/offline). noVNC WebSocket proxy GET /api/hosts/{id}/vms/{uuid}/vnc (local only). xterm.js serial proxy GET /api/hosts/{id}/vms/{uuid}/serial (Connector.OpenSerialConsole, local only).

@@ -19,7 +19,7 @@
 | spec_id | progress | blockers |
 |---------|----------|----------|
 | spec-audit-integration | spec ✓; impl MVP (wizard, auth) | — |
-| spec-vm-lifecycle-create | spec ✓; impl 0% | spec-audit-integration |
+| spec-vm-lifecycle-create | spec ✓; impl started (discovery) | — |
 | spec-frontend-build | spec ✓; impl 0% | — |
 | spec-template-management | spec ✓; impl 0% | spec-vm-lifecycle-create |
 | spec-console-realtime | spec ✓; impl 0% | spec-frontend-build |
@@ -57,7 +57,13 @@
 
 ### Feature (Order 6+)
 
-Deferred until foundation and core complete.
+| Task ID | Spec | Description | Status |
+|---------|------|-------------|--------|
+| T8a | spec-vm-lifecycle-create | Discovery: GET /api/hosts/{id}/pools, volumes, networks | DONE |
+| T8b | spec-vm-lifecycle-create | GET /api/vms list (flat + orphans) | TODO |
+| T8c | spec-vm-lifecycle-create | VM detail, lifecycle (start/stop/pause/resume/destroy) | TODO |
+| T8d | spec-vm-lifecycle-create | POST /api/vms create, clone, claim | TODO |
+| T8e | spec-vm-lifecycle-create | PATCH config edit, vm_config_change audit | TODO |
 
 ---
 
@@ -96,6 +102,9 @@ When T1–T7 are done: create specs for feature specs if needed (plans exist; no
 5. **T5** — spec-application-bootstrap: main, middleware, routes
 6. **T6** — api-auth
 7. **T7** — spec-audit-integration
+8. **T8a** — spec-vm-lifecycle-create: discovery endpoints ✓
+9. **T8b** — spec-vm-lifecycle-create: GET /api/vms
+10. **T8c** — spec-vm-lifecycle-create: VM detail + lifecycle
 
 ---
 
@@ -109,3 +118,5 @@ spec-libvirt-connector (T4) ─┘
 ## Latest Work
 
 **2026-03-16:** spec-audit-integration T7 complete. Added internal/audit package (RecordEvent, RecordEventWithDiff), wired wizard_complete in setupComplete, wired auth events in login/logout. VM/template audit deferred until those specs land.
+
+**2026-03-16:** spec-vm-lifecycle-create T8a started. Added discovery endpoints: GET /api/hosts/{host_id}/pools, GET /api/hosts/{host_id}/pools/{pool_name}/volumes, GET /api/hosts/{host_id}/networks. Per spec §9.3.

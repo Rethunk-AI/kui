@@ -4,6 +4,7 @@
 package libvirtconn
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/url"
@@ -61,6 +62,7 @@ type Connector interface {
 
 	ListDomains(ctx context.Context) ([]DomainInfo, error)
 	LookupByUUID(ctx context.Context, uuid string) (DomainInfo, error)
+	GetDomainXML(ctx context.Context, uuid string) (string, error)
 	DefineXML(ctx context.Context, xmlConfig string) (DomainInfo, error)
 	Create(ctx context.Context, uuid string) error
 	Shutdown(ctx context.Context, uuid string) error
@@ -79,6 +81,11 @@ type Connector interface {
 
 	CreateVolumeFromXML(ctx context.Context, pool string, xml string) (StorageVolumeInfo, error)
 	CloneVolume(ctx context.Context, pool string, sourceName string, targetName string) error
+
+	// CopyVolume downloads a volume and returns its bytes. Used for cross-host/cross-pool clone.
+	CopyVolume(ctx context.Context, pool string, volumeName string) ([]byte, error)
+	// CreateVolumeFromBytes creates a volume and uploads data. Format is "qcow2" or "raw".
+	CreateVolumeFromBytes(ctx context.Context, pool string, name string, data []byte, format string) (StorageVolumeInfo, error)
 }
 
 // Connect opens a libvirt connection and returns a connection-scoped connector.
@@ -169,6 +176,26 @@ func (c *connector) LookupByUUID(ctx context.Context, uuid string) (DomainInfo, 
 	}()
 
 	return c.readDomainInfo(domain)
+}
+
+func (c *connector) GetDomainXML(ctx context.Context, uuid string) (string, error) {
+	if err := checkContext(ctx); err != nil {
+		return "", err
+	}
+
+	domain, err := c.lookupDomain(ctx, "get domain XML", uuid)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = domain.Free()
+	}()
+
+	xml, err := domain.GetXMLDesc(0)
+	if err != nil {
+		return "", c.wrapErr("get domain XML", err)
+	}
+	return xml, nil
 }
 
 func (c *connector) DefineXML(ctx context.Context, xmlConfig string) (DomainInfo, error) {
@@ -583,6 +610,120 @@ func (c *connector) CloneVolume(ctx context.Context, poolName string, sourceName
 	}
 
 	return nil
+}
+
+func (c *connector) CopyVolume(ctx context.Context, poolName string, volumeName string) ([]byte, error) {
+	if err := checkContext(ctx); err != nil {
+		return nil, err
+	}
+	pool, err := c.lookupPool(ctx, "copy volume", poolName)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = pool.Free()
+	}()
+
+	vol, err := pool.LookupStorageVolByName(volumeName)
+	if err != nil {
+		return nil, c.wrapErr("copy volume: lookup", err)
+	}
+	defer func() {
+		_ = vol.Free()
+	}()
+
+	info, err := vol.GetInfo()
+	if err != nil {
+		return nil, c.wrapErr("copy volume: get info", err)
+	}
+	capacity := info.Capacity
+
+	stream, err := c.conn.NewStream(0)
+	if err != nil {
+		return nil, c.wrapErr("copy volume: new stream", err)
+	}
+	defer func() {
+		_ = stream.Free()
+	}()
+
+	if err := vol.Download(stream, 0, capacity, 0); err != nil {
+		return nil, c.wrapErr("copy volume: download", err)
+	}
+
+	var buf bytes.Buffer
+	handler := func(s *libvirt.Stream, data []byte) (int, error) {
+		n, err := buf.Write(data)
+		return n, err
+	}
+	if err := stream.RecvAll(handler); err != nil {
+		return nil, c.wrapErr("copy volume: recv", err)
+	}
+	if err := stream.Finish(); err != nil {
+		return nil, c.wrapErr("copy volume: stream finish", err)
+	}
+	return buf.Bytes(), nil
+}
+
+func (c *connector) CreateVolumeFromBytes(ctx context.Context, poolName string, name string, data []byte, format string) (StorageVolumeInfo, error) {
+	if err := checkContext(ctx); err != nil {
+		return StorageVolumeInfo{}, err
+	}
+	if format == "" {
+		format = "qcow2"
+	}
+	capacity := uint64(len(data))
+	volXML := fmt.Sprintf(`<volume><name>%s</name><capacity unit="bytes">%d</capacity><target><format type="%s"/></target></volume>`, name, capacity, format)
+	vol, err := c.CreateVolumeFromXML(ctx, poolName, volXML)
+	if err != nil {
+		return StorageVolumeInfo{}, err
+	}
+	pool, err := c.lookupPool(ctx, "upload volume", poolName)
+	if err != nil {
+		return StorageVolumeInfo{}, err
+	}
+	defer func() {
+		_ = pool.Free()
+	}()
+
+	volRef, err := pool.LookupStorageVolByName(name)
+	if err != nil {
+		return StorageVolumeInfo{}, c.wrapErr("create volume from bytes: lookup", err)
+	}
+	defer func() {
+		_ = volRef.Free()
+	}()
+
+	stream, err := c.conn.NewStream(0)
+	if err != nil {
+		return StorageVolumeInfo{}, c.wrapErr("create volume from bytes: new stream", err)
+	}
+	defer func() {
+		_ = stream.Free()
+	}()
+
+	if err := volRef.Upload(stream, 0, uint64(len(data)), 0); err != nil {
+		return StorageVolumeInfo{}, c.wrapErr("create volume from bytes: upload", err)
+	}
+	offset := 0
+	handler := func(s *libvirt.Stream, length int) ([]byte, error) {
+		if offset >= len(data) {
+			return nil, nil
+		}
+		end := offset + length
+		if end > len(data) {
+			end = len(data)
+		}
+		chunk := data[offset:end]
+		offset = end
+		return chunk, nil
+	}
+	if err := stream.SendAll(handler); err != nil {
+		return StorageVolumeInfo{}, c.wrapErr("create volume from bytes: send", err)
+	}
+	if err := stream.Finish(); err != nil {
+		return StorageVolumeInfo{}, c.wrapErr("create volume from bytes: stream finish", err)
+	}
+	return vol, nil
 }
 
 func checkContext(ctx context.Context) error {

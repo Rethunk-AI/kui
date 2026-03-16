@@ -158,6 +158,45 @@ func (d *DB) UpdateVMMetadataLastAccess(ctx context.Context, hostID, libvirtUUID
 	return nil
 }
 
+// InsertVMMetadata inserts a vm_metadata row. Returns error if row already exists.
+func (d *DB) InsertVMMetadata(ctx context.Context, hostID, libvirtUUID string, claimed bool, displayName *string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	claimedInt := 0
+	if claimed {
+		claimedInt = 1
+	}
+	disp := ""
+	if displayName != nil {
+		disp = *displayName
+	}
+	_, err := d.SQL.ExecContext(ctx, `INSERT INTO vm_metadata (host_id, libvirt_uuid, claimed, display_name, console_preference, last_access, created_at, updated_at) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)`,
+		hostID, libvirtUUID, claimedInt, disp, now, now, now)
+	if err != nil {
+		return fmt.Errorf("insert vm_metadata: %w", err)
+	}
+	return nil
+}
+
+// UpsertVMMetadataClaim inserts or updates vm_metadata for claim: sets claimed=1, display_name, last_access.
+func (d *DB) UpsertVMMetadataClaim(ctx context.Context, hostID, libvirtUUID string, displayName string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := d.SQL.ExecContext(ctx, `UPDATE vm_metadata SET claimed = 1, display_name = ?, last_access = ?, updated_at = ? WHERE host_id = ? AND libvirt_uuid = ?`,
+		displayName, now, now, hostID, libvirtUUID)
+	if err != nil {
+		return fmt.Errorf("update vm_metadata claim: %w", err)
+	}
+	rows, _ := res.RowsAffected()
+	if rows > 0 {
+		return nil
+	}
+	_, err = d.SQL.ExecContext(ctx, `INSERT INTO vm_metadata (host_id, libvirt_uuid, claimed, display_name, console_preference, last_access, created_at, updated_at) VALUES (?, ?, 1, ?, NULL, ?, ?, ?)`,
+		hostID, libvirtUUID, displayName, now, now, now)
+	if err != nil {
+		return fmt.Errorf("insert vm_metadata claim: %w", err)
+	}
+	return nil
+}
+
 func initSchema(sqlDB *sql.DB) error {
 	if _, err := sqlDB.Exec(`PRAGMA foreign_keys = ON;`); err != nil {
 		return fmt.Errorf("enable sqlite foreign_keys: %w", err)

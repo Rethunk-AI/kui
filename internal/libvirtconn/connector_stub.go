@@ -64,6 +64,7 @@ type Connector interface {
 
 	ListDomains(ctx context.Context) ([]DomainInfo, error)
 	LookupByUUID(ctx context.Context, uuid string) (DomainInfo, error)
+	GetDomainXML(ctx context.Context, uuid string) (string, error)
 	DefineXML(ctx context.Context, xmlConfig string) (DomainInfo, error)
 	Create(ctx context.Context, uuid string) error
 	Shutdown(ctx context.Context, uuid string) error
@@ -82,6 +83,9 @@ type Connector interface {
 
 	CreateVolumeFromXML(ctx context.Context, pool string, xml string) (StorageVolumeInfo, error)
 	CloneVolume(ctx context.Context, pool string, sourceName string, targetName string) error
+
+	CopyVolume(ctx context.Context, pool string, volumeName string) ([]byte, error)
+	CreateVolumeFromBytes(ctx context.Context, pool string, name string, data []byte, format string) (StorageVolumeInfo, error)
 }
 
 // ErrLibvirtDisabled is returned when the libvirt build tag is not set.

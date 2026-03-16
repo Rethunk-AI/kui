@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -226,6 +227,10 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/pause", state.vmPause())
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/resume", state.vmResume())
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/destroy", state.vmDestroy())
+	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/claim", state.vmClaim())
+	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/clone", state.vmClone())
+
+	router.Post("/api/vms", state.createVM())
 
 	return router
 }
@@ -815,6 +820,422 @@ func (r *routerState) vmStop() http.HandlerFunc {
 		}
 		state, _ := conn.GetState(req.Context(), libvirtUUID)
 		writeJSON(w, http.StatusOK, map[string]string{"status": string(state)})
+	}
+}
+
+type vmClaimRequest struct {
+	DisplayName *string `json:"display_name"`
+}
+
+func (r *routerState) vmClaim() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		_, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		hostID := chi.URLParam(req, "host_id")
+		libvirtUUID := chi.URLParam(req, "libvirt_uuid")
+		if hostID == "" || libvirtUUID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id and libvirt_uuid required")
+			return
+		}
+		conn, err := r.getConnectorForHost(req.Context(), hostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		domainInfo, err := conn.LookupByUUID(req.Context(), libvirtUUID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "VM not found")
+			return
+		}
+		displayName := domainInfo.Name
+		var payload vmClaimRequest
+		_ = decodeJSON(req.Body, &payload)
+		if payload.DisplayName != nil && strings.TrimSpace(*payload.DisplayName) != "" {
+			displayName = strings.TrimSpace(*payload.DisplayName)
+		}
+		if err := r.db.UpsertVMMetadataClaim(req.Context(), hostID, libvirtUUID, displayName); err != nil {
+			r.logger.Error("claim failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "claim failed")
+			return
+		}
+		meta, _ := r.db.GetVMMetadata(req.Context(), hostID, libvirtUUID)
+		createdAt, updatedAt := "", ""
+		if meta != nil {
+			createdAt, updatedAt = meta.CreatedAt, meta.UpdatedAt
+		}
+		writeJSON(w, http.StatusOK, vmDetailResponse{
+			HostID:      hostID,
+			LibvirtUUID: libvirtUUID,
+			DisplayName: &displayName,
+			Claimed:     true,
+			Status:      string(domainInfo.State),
+			CreatedAt:   createdAt,
+			UpdatedAt:   updatedAt,
+		})
+	}
+}
+
+type createVMDisk struct {
+	Name   string `json:"name"`
+	SizeMB int    `json:"size_mb"`
+}
+
+type createVMRequest struct {
+	HostID      string        `json:"host_id"`
+	Pool        string        `json:"pool"`
+	Disk        createVMDisk  `json:"disk"`
+	CPU         int           `json:"cpu"`
+	RAMMB       int           `json:"ram_mb"`
+	Network     string        `json:"network"`
+	DisplayName string        `json:"display_name"`
+}
+
+type createVMResponse struct {
+	HostID      string `json:"host_id"`
+	LibvirtUUID string `json:"libvirt_uuid"`
+	DisplayName string `json:"display_name"`
+	CreatedAt   string `json:"created_at"`
+	Status      string `json:"status"`
+}
+
+func (r *routerState) createVM() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		_, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		var payload createVMRequest
+		if err := decodeJSON(req.Body, &payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		hostID := strings.TrimSpace(payload.HostID)
+		if hostID == "" && r.config.DefaultHost != "" {
+			hostID = r.config.DefaultHost
+		}
+		if hostID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id required")
+			return
+		}
+		pool := strings.TrimSpace(payload.Pool)
+		if pool == "" && r.config.DefaultPool != nil {
+			pool = strings.TrimSpace(*r.config.DefaultPool)
+		}
+		if pool == "" {
+			writeJSONError(w, http.StatusBadRequest, "pool required")
+			return
+		}
+		cpu := payload.CPU
+		if cpu <= 0 {
+			cpu = r.config.VMDefaults.CPU
+		}
+		if cpu <= 0 {
+			cpu = 2
+		}
+		ramMB := payload.RAMMB
+		if ramMB <= 0 {
+			ramMB = r.config.VMDefaults.RAMMB
+		}
+		if ramMB <= 0 {
+			ramMB = 2048
+		}
+		network := strings.TrimSpace(payload.Network)
+		if network == "" {
+			network = r.config.VMDefaults.Network
+		}
+		if network == "" {
+			network = "default"
+		}
+		conn, err := r.getConnectorForHost(req.Context(), hostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		if err := conn.ValidatePool(req.Context(), pool); err != nil {
+			r.logger.Error("validate pool failed", "host_id", hostID, "pool", pool, "error", err)
+			writeJSONError(w, http.StatusBadRequest, "pool invalid or inactive")
+			return
+		}
+		var diskPath string
+		existingName := strings.TrimSpace(payload.Disk.Name)
+		sizeMB := payload.Disk.SizeMB
+		if existingName != "" {
+			if err := conn.ValidateVolume(req.Context(), pool, existingName); err != nil {
+				writeJSONError(w, http.StatusBadRequest, "volume not found")
+				return
+			}
+			vols, err := conn.ListVolumes(req.Context(), pool)
+			if err != nil {
+				writeJSONError(w, http.StatusInternalServerError, "failed to list volumes")
+				return
+			}
+			for _, v := range vols {
+				if v.Name == existingName {
+					diskPath = v.Path
+					break
+				}
+			}
+		} else if sizeMB > 0 {
+			u, _ := randomUUID()
+			volName := fmt.Sprintf("kui-%s.qcow2", u[:8])
+			volXML := fmt.Sprintf(`<volume><name>%s</name><capacity unit="bytes">%d</capacity><target><format type="qcow2"/></target></volume>`, volName, uint64(sizeMB)*1024*1024)
+			vol, err := conn.CreateVolumeFromXML(req.Context(), pool, volXML)
+			if err != nil {
+				r.logger.Error("create volume failed", "host_id", hostID, "pool", pool, "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to create disk")
+				return
+			}
+			diskPath = vol.Path
+		} else {
+			writeJSONError(w, http.StatusBadRequest, "disk name or size_mb required")
+			return
+		}
+		vmUUID, err := randomUUID()
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to generate UUID")
+			return
+		}
+		domainName := fmt.Sprintf("kui-%s", vmUUID[:8])
+		displayName := strings.TrimSpace(payload.DisplayName)
+		if displayName == "" {
+			displayName = domainName
+		}
+		domainXML := fmt.Sprintf(`<domain type="kvm">
+  <name>%s</name>
+  <uuid>%s</uuid>
+  <memory unit="KiB">%d</memory>
+  <vcpu>%d</vcpu>
+  <os><type arch="x86_64" machine="pc">hvm</type><boot dev="hd"/></os>
+  <devices>
+    <disk type="file" device="disk">
+      <driver name="qemu" type="qcow2"/>
+      <source file="%s"/>
+      <target dev="vda" bus="virtio"/>
+    </disk>
+    <interface type="network"><source network="%s"/><model type="virtio"/></interface>
+  </devices>
+</domain>`, domainName, vmUUID, ramMB*1024, cpu, diskPath, network)
+		domainInfo, err := conn.DefineXML(req.Context(), domainXML)
+		if err != nil {
+			r.logger.Error("define domain failed", "host_id", hostID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create VM")
+			return
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		if err := r.db.InsertVMMetadata(req.Context(), hostID, domainInfo.UUID, true, &displayName); err != nil {
+			r.logger.Error("insert vm_metadata failed", "host_id", hostID, "libvirt_uuid", domainInfo.UUID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create VM")
+			return
+		}
+		writeJSON(w, http.StatusCreated, createVMResponse{
+			HostID:      hostID,
+			LibvirtUUID: domainInfo.UUID,
+			DisplayName: displayName,
+			CreatedAt:   now,
+			Status:      string(domainInfo.State),
+		})
+	}
+}
+
+var diskSourceFileRe = regexp.MustCompile(`<source\s+file=['"]([^'"]+)['"]`)
+
+func extractFirstDiskPath(domainXML string) string {
+	m := diskSourceFileRe.FindStringSubmatch(domainXML)
+	if len(m) >= 2 {
+		return m[1]
+	}
+	return ""
+}
+
+type vmCloneRequest struct {
+	TargetHostID string `json:"target_host_id"`
+	TargetPool  string `json:"target_pool"`
+	TargetName  string `json:"target_name"`
+}
+
+func (r *routerState) vmClone() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		_, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		sourceHostID := chi.URLParam(req, "host_id")
+		sourceUUID := chi.URLParam(req, "libvirt_uuid")
+		if sourceHostID == "" || sourceUUID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id and libvirt_uuid required")
+			return
+		}
+		var payload vmCloneRequest
+		if err := decodeJSON(req.Body, &payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		targetHostID := strings.TrimSpace(payload.TargetHostID)
+		targetPool := strings.TrimSpace(payload.TargetPool)
+		if targetHostID == "" || targetPool == "" {
+			writeJSONError(w, http.StatusBadRequest, "target_host_id and target_pool required")
+			return
+		}
+		sourceConn, err := r.getConnectorForHost(req.Context(), sourceHostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer sourceConn.Close()
+		state, err := sourceConn.GetState(req.Context(), sourceUUID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "source VM not found")
+			return
+		}
+		if state != libvirtconn.DomainStateShutoff {
+			writeJSONError(w, http.StatusBadRequest, "source VM must be stopped to clone")
+			return
+		}
+		domainXML, err := sourceConn.GetDomainXML(req.Context(), sourceUUID)
+		if err != nil {
+			r.logger.Error("get domain XML failed", "host_id", sourceHostID, "libvirt_uuid", sourceUUID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to clone")
+			return
+		}
+		diskPath := extractFirstDiskPath(domainXML)
+		if diskPath == "" {
+			writeJSONError(w, http.StatusBadRequest, "could not determine source disk")
+			return
+		}
+		sourceInfo, _ := sourceConn.LookupByUUID(req.Context(), sourceUUID)
+		cloneName := strings.TrimSpace(payload.TargetName)
+		if cloneName == "" {
+			cloneName = sourceInfo.Name + "-clone"
+		}
+		pools, err := sourceConn.ListPools(req.Context())
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to list pools")
+			return
+		}
+		var sourceVolName, sourcePoolName string
+		for _, p := range pools {
+			vols, err := sourceConn.ListVolumes(req.Context(), p.Name)
+			if err != nil {
+				continue
+			}
+			for _, v := range vols {
+				if v.Path == diskPath {
+					sourceVolName = v.Name
+					sourcePoolName = p.Name
+					break
+				}
+			}
+			if sourceVolName != "" {
+				break
+			}
+		}
+		if sourceVolName == "" {
+			writeJSONError(w, http.StatusBadRequest, "source disk not found in any pool")
+			return
+		}
+		targetConn, err := r.getConnectorForHost(req.Context(), targetHostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "target host not found")
+			return
+		}
+		defer targetConn.Close()
+		if err := targetConn.ValidatePool(req.Context(), targetPool); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "target pool invalid or inactive")
+			return
+		}
+		targetVolName := cloneName + ".qcow2"
+		var targetDiskPath string
+		if sourceHostID == targetHostID && sourcePoolName == targetPool {
+			if err := sourceConn.CloneVolume(req.Context(), targetPool, sourceVolName, targetVolName); err != nil {
+				r.logger.Error("clone volume failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to clone disk")
+				return
+			}
+			vols, _ := sourceConn.ListVolumes(req.Context(), targetPool)
+			for _, v := range vols {
+				if v.Name == targetVolName {
+					targetDiskPath = v.Path
+					break
+				}
+			}
+		} else {
+			data, err := sourceConn.CopyVolume(req.Context(), sourcePoolName, sourceVolName)
+			if err != nil {
+				r.logger.Error("copy volume failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to copy disk")
+				return
+			}
+			vol, err := targetConn.CreateVolumeFromBytes(req.Context(), targetPool, targetVolName, data, "qcow2")
+			if err != nil {
+				r.logger.Error("create volume from bytes failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to create cloned disk")
+				return
+			}
+			targetDiskPath = vol.Path
+		}
+		if targetDiskPath == "" {
+			writeJSONError(w, http.StatusInternalServerError, "failed to resolve cloned disk path")
+			return
+		}
+		vmUUID, err := randomUUID()
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to generate UUID")
+			return
+		}
+		domainName := cloneName
+		domainXMLNew := fmt.Sprintf(`<domain type="kvm">
+  <name>%s</name>
+  <uuid>%s</uuid>
+  <memory unit="KiB">2097152</memory>
+  <vcpu>2</vcpu>
+  <os><type arch="x86_64" machine="pc">hvm</type><boot dev="hd"/></os>
+  <devices>
+    <disk type="file" device="disk">
+      <driver name="qemu" type="qcow2"/>
+      <source file="%s"/>
+      <target dev="vda" bus="virtio"/>
+    </disk>
+    <interface type="network"><source network="default"/><model type="virtio"/></interface>
+  </devices>
+</domain>`, domainName, vmUUID, targetDiskPath)
+		domainInfo, err := targetConn.DefineXML(req.Context(), domainXMLNew)
+		if err != nil {
+			r.logger.Error("define clone domain failed", "target_host_id", targetHostID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create cloned VM")
+			return
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		if err := r.db.InsertVMMetadata(req.Context(), targetHostID, domainInfo.UUID, true, &cloneName); err != nil {
+			r.logger.Error("insert vm_metadata for clone failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create cloned VM")
+			return
+		}
+		writeJSON(w, http.StatusCreated, createVMResponse{
+			HostID:      targetHostID,
+			LibvirtUUID: domainInfo.UUID,
+			DisplayName: cloneName,
+			CreatedAt:   now,
+			Status:      string(domainInfo.State),
+		})
 	}
 }
 

@@ -198,16 +198,18 @@ jwt_secret: "0123456789abcdef0123456789abcdef"
 }
 
 func TestSetupCompleteIdempotent(t *testing.T) {
-	// Do not run in parallel: sets KUI_DB_PATH/KUI_GIT_PATH which would pollute other tests.
+	// Do not run in parallel: sets KUI_DB_PATH/KUI_GIT_PATH/KUI_TEST_SETUP_MOCK which would pollute other tests.
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "idempotent.db")
 	configPath := filepath.Join(tempDir, "config.yaml")
 	t.Cleanup(func() {
-		_ = os.Unsetenv("KUI_DB_PATH")
-		_ = os.Unsetenv("KUI_GIT_PATH")
+		os.Unsetenv("KUI_DB_PATH")
+		os.Unsetenv("KUI_GIT_PATH")
+		os.Unsetenv("KUI_TEST_SETUP_MOCK")
 	})
 	_ = os.Setenv("KUI_DB_PATH", dbPath)
 	_ = os.Setenv("KUI_GIT_PATH", tempDir)
+	_ = os.Setenv("KUI_TEST_SETUP_MOCK", "1")
 
 	opts, err := parseFlags([]string{"--config", configPath, "--listen", "127.0.0.1:0"})
 	if err != nil {

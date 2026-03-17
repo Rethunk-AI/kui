@@ -19,6 +19,7 @@ import (
 	"github.com/kui/kui/internal/config"
 	"github.com/kui/kui/internal/db"
 	"github.com/kui/kui/internal/git"
+	"github.com/kui/kui/internal/libvirtconn"
 	"github.com/kui/kui/internal/routes"
 )
 
@@ -236,7 +237,7 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 		}
 	}
 
-	mux := routes.NewRouter(routes.RouterOptions{
+	routerOpts := routes.RouterOptions{
 		Logger:        logger,
 		DB:            database,
 		Config:        appConfig,
@@ -244,7 +245,14 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 		ConfigPresent: appConfig != nil,
 		DBPath:        dbPath,
 		GitPath:       gitPath,
-	})
+	}
+	if libvirtconn.SetupTestConnectorEnabled() {
+		conn := libvirtconn.SetupTestConnector()
+		routerOpts.SetupConnectFunc = func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) {
+			return conn, nil
+		}
+	}
+	mux := routes.NewRouter(routerOpts)
 	return &application{
 		logger:       logger,
 		configPath:   cfgPath,

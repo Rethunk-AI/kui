@@ -42,20 +42,20 @@ spec-template-management, spec-console-realtime, spec-ui-deployment.
 | Vet | pass |
 | Active specs | 3 |
 | Done specs | 10 |
-| Per-spec task status | feat-keyboard-shortcuts T1–T6 TODO |
+| Per-spec task status | feat-keyboard-shortcuts T1–T2 DONE, T3–T6 TODO |
 
 ### Remaining Implementation Tasks
 
 **feat-keyboard-shortcuts** (specs/active/feat-keyboard-shortcuts/plan.md):
 
-| Task | Description | Location |
-|------|-------------|----------|
-| T1 | Create shortcuts module | web/src/lib/shortcuts.ts |
-| T2 | VM list row focus and selection | web/src/components/VMList.ts |
-| T3 | Modal Escape handling | CreateVMModal.ts, CloneVMModal.ts |
-| T4 | WinBox Escape handling | web/src/lib/winbox-adapter.ts |
-| T5 | Integrate shortcuts in main.ts | web/src/main.ts |
-| T6 | Shortcut help overlay | web/src/components/ShortcutHelp.ts |
+| Task | Description | Location | Status |
+|------|-------------|----------|--------|
+| T1 | Create shortcuts module | web/src/lib/shortcuts.ts | DONE |
+| T2 | VM list row focus and selection | web/src/components/VMList.ts | DONE |
+| T3 | Modal Escape handling | CreateVMModal.ts, CloneVMModal.ts | TODO |
+| T4 | WinBox Escape handling | web/src/lib/winbox-adapter.ts | TODO |
+| T5 | Integrate shortcuts in main.ts | web/src/main.ts | TODO |
+| T6 | Shortcut help overlay | web/src/components/ShortcutHelp.ts | TODO |
 
 **feat-a11y**, **feat-stuck-vm**: deferred until feat-keyboard-shortcuts complete.
 
@@ -76,7 +76,7 @@ When feat-keyboard-shortcuts, feat-a11y, feat-stuck-vm are done: create specs fo
 
 ## Remaining Work
 
-- feat-keyboard-shortcuts T1–T6 (v2)
+- feat-keyboard-shortcuts T2–T6 (v2)
 - feat-a11y, feat-stuck-vm (v2, after shortcuts)
 
 ---

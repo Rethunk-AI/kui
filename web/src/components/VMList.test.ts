@@ -50,7 +50,7 @@ describe("VMList", () => {
       hosts: {},
       orphans: [],
     };
-    renderVMList(container, { data, onRefresh: () => {} });
+    renderVMList(container, { data, hosts: [], onRefresh: () => {} });
     expect(container.querySelector(".vm-list__empty")?.textContent).toBe("No VMs");
   });
 
@@ -63,6 +63,7 @@ describe("VMList", () => {
     const onOpenCreateModal = vi.fn();
     renderVMList(container, {
       data,
+      hosts: [{ id: "h1", uri: "qemu:///system" }],
       onRefresh: () => {},
       onOpenCreateModal,
     });
@@ -78,7 +79,7 @@ describe("VMList", () => {
       hosts: { h1: "running" },
       orphans: [],
     };
-    renderVMList(container, { data, onRefresh: () => {} });
+    renderVMList(container, { data, hosts: [], onRefresh: () => {} });
     expect(container.querySelector(".vm-list__name")?.textContent).toBe("My VM");
     expect(container.querySelector(".vm-list__status")?.textContent).toBe("running");
   });
@@ -92,6 +93,7 @@ describe("VMList", () => {
     const onRowSelect = vi.fn();
     renderVMList(container, {
       data,
+      hosts: [],
       onRefresh: () => {},
       onRowSelect,
     });
@@ -111,6 +113,7 @@ describe("VMList", () => {
     const onOpenConsole = vi.fn();
     renderVMList(container, {
       data,
+      hosts: [],
       onRefresh: () => {},
       onOpenConsole,
     });
@@ -129,6 +132,7 @@ describe("VMList", () => {
     const onOpenCloneModal = vi.fn();
     renderVMList(container, {
       data,
+      hosts: [],
       onRefresh: () => {},
       onOpenCloneModal,
     });
@@ -145,7 +149,7 @@ describe("VMList", () => {
         { host_id: "h1", libvirt_uuid: "u1", name: "Orphan VM" },
       ],
     };
-    renderVMList(container, { data, onRefresh: () => {} });
+    renderVMList(container, { data, hosts: [], onRefresh: () => {} });
     expect(container.querySelector(".vm-list-orphans")).toBeTruthy();
     expect(container.querySelector(".vm-list-orphans__name")?.textContent).toBe("Orphan VM");
   });
@@ -159,7 +163,7 @@ describe("VMList", () => {
       hosts: {},
       orphans: [{ host_id: "h1", libvirt_uuid: "u1", name: "Orphan" }],
     };
-    renderVMList(container, { data, onRefresh });
+    renderVMList(container, { data, hosts: [], onRefresh });
     const claimBtn = container.querySelector(".vm-list__btn--claim") as HTMLButtonElement;
     claimBtn?.click();
     await vi.waitFor(() => {
@@ -178,7 +182,7 @@ describe("VMList", () => {
         { host_id: "h1", libvirt_uuid: "u1", name: "Orphan" },
       ],
     };
-    renderVMList(container, { data, onRefresh });
+    renderVMList(container, { data, hosts: [], onRefresh });
     const claimBtn = container.querySelector(".vm-list__btn--claim");
     (claimBtn as HTMLButtonElement)?.click();
     await vi.waitFor(() => {
@@ -196,7 +200,7 @@ describe("VMList", () => {
       hosts: { h1: "running" },
       orphans: [],
     };
-    renderVMList(container, { data, onRefresh });
+    renderVMList(container, { data, hosts: [], onRefresh });
     const recoverBtn = container.querySelector(".vm-list__btn--recover") as HTMLButtonElement;
     recoverBtn?.click();
     await vi.waitFor(() => {
@@ -213,7 +217,7 @@ describe("VMList", () => {
       hosts: { h1: "running" },
       orphans: [],
     };
-    renderVMList(container, { data, onRefresh });
+    renderVMList(container, { data, hosts: [], onRefresh });
     const recoverBtn = container.querySelector(".vm-list__btn--recover");
     expect(recoverBtn).toBeTruthy();
     (recoverBtn as HTMLButtonElement)?.click();
@@ -229,7 +233,7 @@ describe("VMList", () => {
       hosts: {},
       orphans: [{ host_id: "h1", libvirt_uuid: "u1", name: "O" }],
     };
-    renderVMList(container, { data, onRefresh: () => {} });
+    renderVMList(container, { data, hosts: [], onRefresh: () => {} });
     const toggle = container.querySelector(".vm-list-orphans__toggle");
     expect(toggle?.getAttribute("aria-expanded")).toBe("true");
     (toggle as HTMLButtonElement)?.click();

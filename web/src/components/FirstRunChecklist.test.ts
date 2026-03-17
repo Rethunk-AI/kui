@@ -60,7 +60,7 @@ describe("FirstRunChecklist", () => {
     });
 
     it("renders title and list", () => {
-      renderFirstRunChecklist(container, { onDismissed: () => {} });
+      renderFirstRunChecklist(container, { hosts: [], onDismissed: () => {} });
       expect(container.querySelector("h1")?.textContent).toBe("Get started");
       expect(container.querySelector("ul")).toBeTruthy();
     });
@@ -68,6 +68,7 @@ describe("FirstRunChecklist", () => {
     it("Create VM button when onOpenCreateModal provided", () => {
       const onOpenCreateModal = vi.fn();
       renderFirstRunChecklist(container, {
+        hosts: [{ id: "h1", uri: "qemu:///system" }],
         onDismissed: () => {},
         onOpenCreateModal,
       });
@@ -81,7 +82,7 @@ describe("FirstRunChecklist", () => {
       const { putPreferences } = await import("../lib/api");
       vi.mocked(putPreferences).mockRejectedValueOnce(new Error("Save failed"));
       const onDismissed = vi.fn();
-      renderFirstRunChecklist(container, { onDismissed });
+      renderFirstRunChecklist(container, { hosts: [], onDismissed });
       const buttons = container.querySelectorAll("button");
       const dismissBtn = Array.from(buttons).find((b) => b.textContent === "Dismiss");
       dismissBtn?.click();
@@ -94,7 +95,7 @@ describe("FirstRunChecklist", () => {
     it("Dismiss button calls putPreferences and onDismissed", async () => {
       const { putPreferences } = await import("../lib/api");
       const onDismissed = vi.fn();
-      renderFirstRunChecklist(container, { onDismissed });
+      renderFirstRunChecklist(container, { hosts: [], onDismissed });
       const buttons = container.querySelectorAll("button");
       const dismissBtn = Array.from(buttons).find((b) => b.textContent === "Dismiss");
       expect(dismissBtn).toBeTruthy();

@@ -7,6 +7,8 @@ import {
   fetchHosts,
   claimVM,
   recoverVM,
+  bulkClaimOrphans,
+  bulkDestroyOrphans,
   createVM,
   cloneVM,
   fetchHostPools,
@@ -180,6 +182,55 @@ describe("api", () => {
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining("/hosts/h1/vms/u1/recover"),
       expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("bulkClaimOrphans", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          claimed: [{ host_id: "h1", libvirt_uuid: "u1", display_name: "VM1" }],
+          conflicts: [],
+        }),
+    });
+    const result = await bulkClaimOrphans([
+      { host_id: "h1", libvirt_uuid: "u1", display_name: "VM1" },
+    ]);
+    expect(result.claimed).toHaveLength(1);
+    expect(result.claimed[0].display_name).toBe("VM1");
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/orphans/claim"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          items: [{ host_id: "h1", libvirt_uuid: "u1", display_name: "VM1" }],
+        }),
+      })
+    );
+  });
+
+  it("bulkDestroyOrphans", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          destroyed: [{ host_id: "h1", libvirt_uuid: "u1" }],
+          failed: [],
+        }),
+    });
+    const result = await bulkDestroyOrphans([
+      { host_id: "h1", libvirt_uuid: "u1" },
+    ]);
+    expect(result.destroyed).toHaveLength(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/api/orphans/destroy"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          items: [{ host_id: "h1", libvirt_uuid: "u1" }],
+        }),
+      })
     );
   });
 

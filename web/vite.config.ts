@@ -53,6 +53,7 @@ export default defineConfig({
         ".pnp.*",
         "dist/",
         "**/console.ts",
+        "**/main.ts",
       ],
     },
   },

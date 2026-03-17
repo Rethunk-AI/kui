@@ -5,6 +5,8 @@ import type { VMsResponse, VM } from "../lib/api";
 vi.mock("../lib/api", () => ({
   claimVM: vi.fn().mockResolvedValue({}),
   recoverVM: vi.fn().mockResolvedValue({}),
+  bulkClaimOrphans: vi.fn().mockResolvedValue({ claimed: [], conflicts: [] }),
+  bulkDestroyOrphans: vi.fn().mockResolvedValue({ destroyed: [], failed: [] }),
   ApiError: class ApiError extends Error {
     constructor(public status: number, message: string) {
       super(message);

@@ -400,9 +400,9 @@ One commit per package or logical group:
 | 3 audit | Done | 80.4% |
 | 3 git | Done | 81% |
 | 4 eventsource | Done | 96.6% (ConnectorProvider injected) |
-| 4 routes | Done | 27.8% (ConnectorProvider injected; more handlers needed for 70%) |
-| 4 cmd/kui | Done | 65.2% (main, fatalStartup excluded) |
-| 5–6 web | Done | 78.32% stmts, 90.02% components (main.ts, console.ts excluded) |
+| 4 routes | Done | 62% (ConnectorProvider injected; VNC/serial proxy excluded) |
+| 4 cmd/kui | Done | 70.3% (main, fatalStartup excluded) |
+| 5–6 web | Done | 92.13% stmts (main.ts, console.ts excluded) |
 
 ---
 

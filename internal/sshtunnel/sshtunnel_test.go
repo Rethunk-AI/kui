@@ -80,6 +80,22 @@ func TestParseQemuSSH(t *testing.T) {
 			uri:     "qemu+ssh://host:abc/system?keyfile=/key",
 			wantErr: true,
 		},
+		{
+			name:    "qemu+ssh without keyfile in query",
+			uri:     "qemu+ssh://user@host.example:22/system",
+			host:    "host.example",
+			port:    22,
+			user:    "user",
+			keyfile: "",
+		},
+		{
+			name:    "qemu+ssh with user but empty password",
+			uri:     "qemu+ssh://root:@host/system?keyfile=/key",
+			host:    "host",
+			port:    22,
+			user:    "root",
+			keyfile: "/key",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

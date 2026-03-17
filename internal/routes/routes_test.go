@@ -252,6 +252,67 @@ jwt_secret: "` + testJWTSecret + `"
 	}
 }
 
+func TestSetupStatus_Complete(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, err = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        loaded,
+		ConfigPath:    configPath,
+		ConfigPresent: true,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body struct {
+		SetupRequired bool    `json:"setup_required"`
+		Reason        *string `json:"reason"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.SetupRequired {
+		t.Fatalf("expected setup_required=false when complete, got %+v", body)
+	}
+}
+
 func TestSetupStatus_DBMissing(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
@@ -1776,6 +1837,241 @@ func TestPatchVMConfig_VMNotFound(t *testing.T) {
 	}
 }
 
+// --- getDomainXML / putDomainXML ---
+
+func TestGetDomainXML_Success(t *testing.T) {
+	t.Parallel()
+	domainXML := `<domain type="kvm"><name>vm1</name><uuid>uuid-vm</uuid><memory unit="KiB">1048576</memory><vcpu>1</vcpu><devices></devices></domain>`
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, _ := config.Load(configPath)
+	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
+	t.Cleanup(func() { _ = database.Close() })
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	_ = database.InsertVMMetadata(context.Background(), "local", "uuid-vm", true, nil)
+	mockConn := &mockConnector{
+		domainInfo: libvirtconn.DomainInfo{Name: "vm1", UUID: "uuid-vm", State: libvirtconn.DomainStateShutoff},
+		state:      libvirtconn.DomainStateShutoff,
+		domainXML:  domainXML,
+	}
+	handler := NewRouter(RouterOptions{
+		Logger:            nil,
+		DB:                database,
+		Config:            loaded,
+		ConfigPath:        configPath,
+		ConfigPresent:     true,
+		DBPath:            filepath.Join(tempDir, "kui.db"),
+		GitPath:           tempDir,
+		ConnectorProvider: func(ctx context.Context, hostID string) (libvirtconn.Connector, error) { return mockConn, nil },
+	})
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	var loginResp struct{ Token string }
+	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/hosts/local/vms/uuid-vm/domain-xml", nil)
+	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "application/xml" {
+		t.Errorf("expected Content-Type application/xml, got %s", rec.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(rec.Body.String(), "<domain") {
+		t.Errorf("expected domain XML in body, got %s", rec.Body.String())
+	}
+}
+
+func TestGetDomainXML_VMNotFound(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandlerWithClaimedVM(t, libvirtconn.DomainStateShutoff, libvirtconn.DomainStateShutoff)
+	req := httptest.NewRequest(http.MethodGet, "/api/hosts/local/vms/00000000-0000-0000-0000-000000000000/domain-xml", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPutDomainXML_Success(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, _ := config.Load(configPath)
+	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
+	t.Cleanup(func() { _ = database.Close() })
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	_ = database.InsertVMMetadata(context.Background(), "local", "uuid-vm", true, nil)
+
+	domainXML := `<?xml version="1.0"?>
+<domain type="kvm">
+  <name>vm1</name>
+  <uuid>uuid-vm</uuid>
+  <memory unit="KiB">2097152</memory>
+  <vcpu>2</vcpu>
+  <os><type arch="x86_64" machine="pc">hvm</type></os>
+  <devices><disk type="file"><source file="/var/lib/libvirt/images/vm1.qcow2"/></disk></devices>
+</domain>`
+	mock := &mockConnector{
+		domainInfo: libvirtconn.DomainInfo{Name: "vm1", UUID: "uuid-vm", State: libvirtconn.DomainStateShutoff},
+		state:      libvirtconn.DomainStateShutoff,
+		domainXML:  domainXML,
+	}
+	handler := NewRouter(RouterOptions{
+		Logger:            nil,
+		DB:                database,
+		Config:            loaded,
+		ConfigPath:        configPath,
+		ConfigPresent:     true,
+		DBPath:            filepath.Join(tempDir, "kui.db"),
+		GitPath:           tempDir,
+		ConnectorProvider: func(ctx context.Context, hostID string) (libvirtconn.Connector, error) { return mock, nil },
+	})
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	var loginResp struct{ Token string }
+	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/hosts/local/vms/uuid-vm/domain-xml", strings.NewReader(domainXML))
+	req.Header.Set("Content-Type", "application/xml")
+	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body vmDetailResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.LibvirtUUID != "uuid-vm" {
+		t.Errorf("unexpected libvirt_uuid: %s", body.LibvirtUUID)
+	}
+}
+
+func TestPutDomainXML_VMRunning(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandlerWithClaimedVM(t, libvirtconn.DomainStateRunning, libvirtconn.DomainStateRunning)
+	domainXML := `<?xml version="1.0"?><domain type="kvm"><name>vm1</name><uuid>uuid-vm</uuid><memory unit="KiB">1048576</memory><vcpu>1</vcpu><devices></devices></domain>`
+	req := httptest.NewRequest(http.MethodPut, "/api/hosts/local/vms/uuid-vm/domain-xml", strings.NewReader(domainXML))
+	req.Header.Set("Content-Type", "application/xml")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 (VM running), got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "must be stopped") {
+		t.Errorf("expected 'must be stopped' in body, got %s", rec.Body.String())
+	}
+}
+
+func TestPutDomainXML_ForbiddenXML(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandlerWithClaimedVM(t, libvirtconn.DomainStateShutoff, libvirtconn.DomainStateShutoff)
+	domainXML := `<?xml version="1.0"?>
+<domain type="kvm" xmlns:qemu="http://libvirt.org/schemas/domain/qemu/1.0">
+  <name>vm1</name>
+  <uuid>uuid-vm</uuid>
+  <memory unit="KiB">1048576</memory>
+  <vcpu>1</vcpu>
+  <devices></devices>
+  <qemu:commandline><qemu:arg value="-init"/></qemu:commandline>
+</domain>`
+	req := httptest.NewRequest(http.MethodPut, "/api/hosts/local/vms/uuid-vm/domain-xml", strings.NewReader(domainXML))
+	req.Header.Set("Content-Type", "application/xml")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 (forbidden), got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "forbidden") {
+		t.Errorf("expected 'forbidden' in body, got %s", rec.Body.String())
+	}
+}
+
+func TestPutDomainXML_UUIDMismatch(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandlerWithClaimedVM(t, libvirtconn.DomainStateShutoff, libvirtconn.DomainStateShutoff)
+	domainXML := `<?xml version="1.0"?><domain type="kvm"><name>vm1</name><uuid>other-uuid</uuid><memory unit="KiB">1048576</memory><vcpu>1</vcpu><devices></devices></domain>`
+	req := httptest.NewRequest(http.MethodPut, "/api/hosts/local/vms/uuid-vm/domain-xml", strings.NewReader(domainXML))
+	req.Header.Set("Content-Type", "application/xml")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 (UUID mismatch), got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "does not match") {
+		t.Errorf("expected 'does not match' in body, got %s", rec.Body.String())
+	}
+}
+
+func TestPutDomainXML_InvalidXML(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandlerWithClaimedVM(t, libvirtconn.DomainStateShutoff, libvirtconn.DomainStateShutoff)
+	domainXML := `<domain><name>x</domain`
+	req := httptest.NewRequest(http.MethodPut, "/api/hosts/local/vms/uuid-vm/domain-xml", strings.NewReader(domainXML))
+	req.Header.Set("Content-Type", "application/xml")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 (invalid XML), got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid") {
+		t.Errorf("expected 'invalid' in body, got %s", rec.Body.String())
+	}
+}
+
+func TestPutDomainXML_VMNotFound(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandlerWithClaimedVM(t, libvirtconn.DomainStateShutoff, libvirtconn.DomainStateShutoff)
+	domainXML := `<?xml version="1.0"?><domain type="kvm"><name>vm1</name><uuid>uuid-vm</uuid><memory unit="KiB">1048576</memory><vcpu>1</vcpu><devices></devices></domain>`
+	req := httptest.NewRequest(http.MethodPut, "/api/hosts/local/vms/00000000-0000-0000-0000-000000000000/domain-xml", strings.NewReader(domainXML))
+	req.Header.Set("Content-Type", "application/xml")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 // --- vmLifecycleOp (start, pause, resume, destroy) ---
 
 func TestVMStart_Success(t *testing.T) {
@@ -1963,6 +2259,214 @@ func TestVMRecover_Success(t *testing.T) {
 	}
 }
 
+// --- orphansBulkClaim ---
+
+func TestOrphansBulkClaim_Success(t *testing.T) {
+	t.Parallel()
+	mock := &mockConnector{
+		domainInfo: libvirtconn.DomainInfo{Name: "orphan1", UUID: "uuid-o1", State: libvirtconn.DomainStateShutoff},
+	}
+	handler, token := authHandler(t, func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+		if hostID != "local" {
+			return nil, errors.New("host not found")
+		}
+		return mock, nil
+	})
+	payload := map[string]any{
+		"items": []map[string]any{
+			{"host_id": "local", "libvirt_uuid": "uuid-o1", "display_name": "My Orphan"},
+		},
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/orphans/claim", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Claimed   []struct {
+			HostID      string `json:"host_id"`
+			LibvirtUUID string `json:"libvirt_uuid"`
+			DisplayName string `json:"display_name"`
+		} `json:"claimed"`
+		Conflicts []struct {
+			HostID      string `json:"host_id"`
+			LibvirtUUID string `json:"libvirt_uuid"`
+			Reason      string `json:"reason"`
+		} `json:"conflicts"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Claimed) != 1 {
+		t.Errorf("expected 1 claimed, got %d", len(resp.Claimed))
+	}
+	if len(resp.Conflicts) != 0 {
+		t.Errorf("expected 0 conflicts, got %d: %+v", len(resp.Conflicts), resp.Conflicts)
+	}
+	if len(resp.Claimed) > 0 && (resp.Claimed[0].HostID != "local" || resp.Claimed[0].LibvirtUUID != "uuid-o1" || resp.Claimed[0].DisplayName != "My Orphan") {
+		t.Errorf("unexpected claimed item: %+v", resp.Claimed[0])
+	}
+}
+
+func TestOrphansBulkClaim_EmptyItems(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandler(t, nil)
+	payload := map[string]any{"items": []any{}}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/orphans/claim", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestOrphansBulkClaim_AlreadyClaimed(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandlerWithClaimedVM(t, libvirtconn.DomainStateShutoff, libvirtconn.DomainStateShutoff)
+	payload := map[string]any{
+		"items": []map[string]any{
+			{"host_id": "local", "libvirt_uuid": "uuid-vm"},
+		},
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/orphans/claim", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Claimed   []struct{} `json:"claimed"`
+		Conflicts []struct{ Reason string } `json:"conflicts"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Claimed) != 0 {
+		t.Errorf("expected 0 claimed, got %d", len(resp.Claimed))
+	}
+	if len(resp.Conflicts) != 1 || resp.Conflicts[0].Reason != "already_claimed" {
+		t.Errorf("expected 1 conflict with reason already_claimed, got %+v", resp.Conflicts)
+	}
+}
+
+func TestOrphansBulkClaim_Unauthorized(t *testing.T) {
+	t.Parallel()
+	handler, _ := authHandler(t, nil)
+	payload := map[string]any{"items": []map[string]any{{"host_id": "local", "libvirt_uuid": "uuid-o1"}}}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/orphans/claim", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- orphansBulkDestroy ---
+
+func TestOrphansBulkDestroy_Success(t *testing.T) {
+	t.Parallel()
+	mock := &mockConnector{
+		domainInfo: libvirtconn.DomainInfo{Name: "orphan1", UUID: "uuid-o1", State: libvirtconn.DomainStateShutoff},
+	}
+	handler, token := authHandler(t, func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+		if hostID != "local" {
+			return nil, errors.New("host not found")
+		}
+		return mock, nil
+	})
+	payload := map[string]any{
+		"items": []map[string]any{
+			{"host_id": "local", "libvirt_uuid": "uuid-o1"},
+		},
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/orphans/destroy", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Destroyed []struct {
+			HostID      string `json:"host_id"`
+			LibvirtUUID string `json:"libvirt_uuid"`
+		} `json:"destroyed"`
+		Failed []struct{} `json:"failed"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Destroyed) != 1 {
+		t.Errorf("expected 1 destroyed, got %d", len(resp.Destroyed))
+	}
+	if len(resp.Failed) != 0 {
+		t.Errorf("expected 0 failed, got %d", len(resp.Failed))
+	}
+}
+
+func TestOrphansBulkDestroy_ClaimedRejected(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandlerWithClaimedVM(t, libvirtconn.DomainStateShutoff, libvirtconn.DomainStateShutoff)
+	payload := map[string]any{
+		"items": []map[string]any{
+			{"host_id": "local", "libvirt_uuid": "uuid-vm"},
+		},
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/orphans/destroy", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Destroyed []struct{} `json:"destroyed"`
+		Failed    []struct {
+			Reason string `json:"reason"`
+		} `json:"failed"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Destroyed) != 0 {
+		t.Errorf("expected 0 destroyed, got %d", len(resp.Destroyed))
+	}
+	if len(resp.Failed) != 1 || resp.Failed[0].Reason != "claimed" {
+		t.Errorf("expected 1 failed with reason claimed, got %+v", resp.Failed)
+	}
+}
+
+func TestOrphansBulkDestroy_EmptyItems(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandler(t, nil)
+	payload := map[string]any{"items": []any{}}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/orphans/destroy", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 // --- vmStop ---
 
 func TestVMStop_Success(t *testing.T) {
@@ -2117,6 +2621,66 @@ default_pool: default
 	}
 }
 
+func TestGetVMs_SetupRequired(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, _ := config.Load(configPath)
+	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
+	t.Cleanup(func() { _ = database.Close() })
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	// ConfigPresent=false simulates setup mode; getVMs returns 503
+	handler2 := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        loaded,
+		ConfigPath:    configPath,
+		ConfigPresent: false,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler2.ServeHTTP(loginRec, loginReq)
+	var loginResp struct{ Token string }
+	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/vms", nil)
+	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	rec := httptest.NewRecorder()
+	handler2.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 when setup required, got %d", rec.Code)
+	}
+}
+
+func TestCreateVM_BadJSON(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandler(t, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/vms", strings.NewReader("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
 func TestCreateVM_MissingPool(t *testing.T) {
 	t.Parallel()
 	handler, token := authHandler(t, nil)
@@ -2235,6 +2799,18 @@ func TestVMClone_SourceNotStopped(t *testing.T) {
 
 // --- getTemplates ---
 
+func TestGetVMDetail_MissingParams(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandler(t, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/hosts//vms/uuid", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest && rec.Code != http.StatusNotFound {
+		t.Errorf("expected 400 or 404, got %d", rec.Code)
+	}
+}
+
 func TestGetTemplates_EmptyList(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
@@ -2349,6 +2925,595 @@ jwt_secret: "` + testJWTSecret + `"
 }
 
 // --- createTemplate ---
+
+// --- validateHost during setup ---
+
+func TestValidateHost_InvalidURIDuringSetup(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        nil,
+		ConfigPath:    filepath.Join(tempDir, "nonexistent.yaml"),
+		ConfigPresent: false,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	payload := map[string]string{"host_id": "local", "uri": "qemu+ssh://invalid[", "keyfile": ""}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/validate-host", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Valid bool   `json:"valid"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Valid {
+		t.Error("expected valid=false for invalid URI")
+	}
+	if body.Error == "" {
+		t.Error("expected error message")
+	}
+}
+
+func TestValidateHost_BadJSON(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        nil,
+		ConfigPath:    filepath.Join(tempDir, "nonexistent.yaml"),
+		ConfigPresent: false,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/validate-host", strings.NewReader("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestValidateHost_EmptyURI(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        nil,
+		ConfigPath:    filepath.Join(tempDir, "nonexistent.yaml"),
+		ConfigPresent: false,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	payload := map[string]string{"host_id": "local", "uri": "   ", "keyfile": ""}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/validate-host", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+// --- login rate limit ---
+
+func TestLogin_RateLimit(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        loaded,
+		ConfigPath:    configPath,
+		ConfigPresent: true,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	payload := map[string]string{"username": "admin", "password": "wrong"}
+	bodyBytes, _ := json.Marshal(payload)
+	for i := 0; i < 6; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Real-IP", "192.168.1.100")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if i < 5 && rec.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401, got %d", i+1, rec.Code)
+		}
+		if i == 5 && rec.Code != http.StatusTooManyRequests {
+			t.Errorf("attempt 6: expected 429 rate limit, got %d", rec.Code)
+		}
+	}
+}
+
+// --- staticHandler with FS ---
+
+func TestStaticHandler_WithFS(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tempDir, "index.html"), []byte("<html>test</html>"), 0o644); err != nil {
+		t.Fatalf("write index: %v", err)
+	}
+	fs := http.Dir(tempDir)
+	handler := staticHandler(fs)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "test") {
+		t.Errorf("expected body to contain test, got %q", rec.Body.String())
+	}
+}
+
+func TestStaticHandler_WithFS_FallbackToIndex(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tempDir, "index.html"), []byte("spa-fallback"), 0o644); err != nil {
+		t.Fatalf("write index: %v", err)
+	}
+	fs := http.Dir(tempDir)
+	handler := staticHandler(fs)
+	// Request for non-existent path falls back to index.html (SPA behavior)
+	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 (fallback to index), got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "spa-fallback") {
+		t.Errorf("expected index.html content, got %q", rec.Body.String())
+	}
+}
+
+// --- setupComplete validation errors ---
+
+func TestSetupComplete_BadPayload(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        nil,
+		ConfigPath:    filepath.Join(tempDir, "nonexistent.yaml"),
+		ConfigPresent: false,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	tests := []struct {
+		name string
+		body map[string]any
+		want int
+	}{
+		{"empty admin username", map[string]any{"admin": map[string]string{"username": "", "password": "x"}, "hosts": []map[string]string{{"id": "a", "uri": "qemu:///system", "keyfile": ""}}, "default_host": "a"}, 400},
+		{"empty admin password", map[string]any{"admin": map[string]string{"username": "a", "password": ""}, "hosts": []map[string]string{{"id": "a", "uri": "qemu:///system", "keyfile": ""}}, "default_host": "a"}, 400},
+		{"no hosts", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{}, "default_host": "a"}, 400},
+		{"empty default_host", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "a", "uri": "qemu:///system", "keyfile": ""}}, "default_host": ""}, 400},
+		{"default_host not in hosts", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "a", "uri": "qemu:///system", "keyfile": ""}}, "default_host": "b"}, 400},
+		{"invalid hosts empty id", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "", "uri": "qemu:///system", "keyfile": ""}}, "default_host": "a"}, 400},
+		{"invalid hosts empty uri", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "a", "uri": "", "keyfile": ""}}, "default_host": "a"}, 400},
+		{"bad json", nil, 400},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var bodyBytes []byte
+			if tt.body != nil {
+				bodyBytes, _ = json.Marshal(tt.body)
+			} else {
+				bodyBytes = []byte("not json")
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/setup/complete", bytes.NewReader(bodyBytes))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != tt.want {
+				t.Errorf("expected %d, got %d: %s", tt.want, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// --- patchVMConfig error paths ---
+
+func TestPatchVMConfig_BadJSON(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandler(t, func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+		return &mockConnector{}, nil
+	})
+	req := httptest.NewRequest(http.MethodPatch, "/api/hosts/local/vms/uuid-vm", strings.NewReader("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestPatchVMConfig_VMNotStoppedForDomainEdit(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandlerWithClaimedVM(t, libvirtconn.DomainStateRunning, libvirtconn.DomainStateRunning)
+	payload := map[string]any{"cpu": 4}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPatch, "/api/hosts/local/vms/uuid-vm", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 (VM must be stopped), got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPatchVMConfig_NetworkNotFound(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, _ := config.Load(configPath)
+	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
+	t.Cleanup(func() { _ = database.Close() })
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	_ = database.InsertVMMetadata(context.Background(), "local", "uuid-vm", true, nil)
+
+	mock := &mockConnector{
+		domainInfo: libvirtconn.DomainInfo{Name: "vm1", UUID: "uuid-vm", State: libvirtconn.DomainStateShutoff},
+		state:      libvirtconn.DomainStateShutoff,
+		domainXML:  `<domain><name>vm1</name><devices><interface><source network="default"/></interface></devices></domain>`,
+		networks:   []libvirtconn.NetworkInfo{{Name: "default", UUID: "n1", Active: true}},
+	}
+	handler := NewRouter(RouterOptions{
+		Logger:            nil,
+		DB:                database,
+		Config:            loaded,
+		ConfigPath:        configPath,
+		ConfigPresent:     true,
+		DBPath:            filepath.Join(tempDir, "kui.db"),
+		GitPath:           tempDir,
+		ConnectorProvider: func(ctx context.Context, hostID string) (libvirtconn.Connector, error) { return mock, nil },
+	})
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	var loginResp struct{ Token string }
+	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
+
+	payload := map[string]any{"network": "nonexistent"}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPatch, "/api/hosts/local/vms/uuid-vm", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Errorf("expected 409 (network invalid), got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPatchVMConfig_DomainEditTriggersUnifiedDiff(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, _ := config.Load(configPath)
+	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
+	t.Cleanup(func() { _ = database.Close() })
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	_ = database.InsertVMMetadata(context.Background(), "local", "uuid-vm", true, nil)
+
+	domainXML := `<domain type="kvm"><name>vm1</name><vcpu>2</vcpu><memory unit="KiB">2097152</memory><devices></devices></domain>`
+	mock := &mockConnector{
+		domainInfo: libvirtconn.DomainInfo{Name: "vm1", UUID: "uuid-vm", State: libvirtconn.DomainStateShutoff},
+		state:      libvirtconn.DomainStateShutoff,
+		domainXML:  domainXML,
+	}
+	handler := NewRouter(RouterOptions{
+		Logger:            nil,
+		DB:                database,
+		Config:            loaded,
+		ConfigPath:        configPath,
+		ConfigPresent:     true,
+		DBPath:            filepath.Join(tempDir, "kui.db"),
+		GitPath:           tempDir,
+		ConnectorProvider: func(ctx context.Context, hostID string) (libvirtconn.Connector, error) { return mock, nil },
+	})
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	var loginResp struct{ Token string }
+	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
+
+	payload := map[string]any{"cpu": 4}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPatch, "/api/hosts/local/vms/uuid-vm", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- getPreferences with data ---
+
+func TestGetPreferences_WithData(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandler(t, nil)
+	// First set preferences
+	payload := map[string]any{
+		"default_host_id": "local",
+		"list_view_options": map[string]any{
+			"list_view": map[string]any{"sort": "name", "page_size": 25, "group_by": "last_access"},
+		},
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	putReq := httptest.NewRequest(http.MethodPut, "/api/preferences", bytes.NewReader(bodyBytes))
+	putReq.Header.Set("Content-Type", "application/json")
+	putReq.Header.Set("Authorization", "Bearer "+token)
+	putRec := httptest.NewRecorder()
+	handler.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("put preferences: %d %s", putRec.Code, putRec.Body.String())
+	}
+	// Then get
+	getReq := httptest.NewRequest(http.MethodGet, "/api/preferences", nil)
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get preferences: %d", getRec.Code)
+	}
+	var resp preferencesResponse
+	if err := json.NewDecoder(getRec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.DefaultHostID == nil || *resp.DefaultHostID != "local" {
+		t.Errorf("unexpected default_host_id: %v", resp.DefaultHostID)
+	}
+}
+
+func TestPutPreferences_InvalidGroupBy(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandler(t, nil)
+	payload := map[string]any{
+		"list_view_options": map[string]any{
+			"list_view": map[string]any{"group_by": "invalid_value"},
+		},
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPut, "/api/preferences", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- vmLifecycle error paths ---
+
+func TestVMLifecycle_ConnectorError(t *testing.T) {
+	t.Parallel()
+	// Build handler with connector that returns error
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, _ := config.Load(configPath)
+	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
+	t.Cleanup(func() { _ = database.Close() })
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	_ = database.InsertVMMetadata(context.Background(), "local", "uuid-vm", true, nil)
+
+	handler2 := NewRouter(RouterOptions{
+		Logger:            nil,
+		DB:                database,
+		Config:            loaded,
+		ConfigPath:        configPath,
+		ConfigPresent:     true,
+		DBPath:            filepath.Join(tempDir, "kui.db"),
+		GitPath:           tempDir,
+		ConnectorProvider: func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+			return nil, errors.New("host not found")
+		},
+	})
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler2.ServeHTTP(loginRec, loginReq)
+	var loginResp struct{ Token string }
+	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/hosts/local/vms/uuid-vm/start", nil)
+	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	rec := httptest.NewRecorder()
+	handler2.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 when connector fails, got %d", rec.Code)
+	}
+}
+
+func TestVMLifecycle_LibvirtOpError(t *testing.T) {
+	t.Parallel()
+	mock := &mockConnector{
+		domainInfo: libvirtconn.DomainInfo{Name: "vm1", UUID: "uuid-vm", State: libvirtconn.DomainStateShutoff},
+		createErr:  errors.New("create failed"),
+	}
+	handler, token := authHandlerWithClaimedVMWithConnector(t, mock)
+	req := httptest.NewRequest(http.MethodPost, "/api/hosts/local/vms/uuid-vm/start", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 when Create fails, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// authHandlerWithClaimedVMWithConnector is like authHandlerWithClaimedVM but accepts a custom mock.
+func authHandlerWithClaimedVMWithConnector(t *testing.T, mock *mockConnector) (http.Handler, string) {
+	t.Helper()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, _ := config.Load(configPath)
+	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
+	t.Cleanup(func() { _ = database.Close() })
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	_ = database.InsertVMMetadata(context.Background(), "local", "uuid-vm", true, nil)
+
+	handler := NewRouter(RouterOptions{
+		Logger:            nil,
+		DB:                database,
+		Config:            loaded,
+		ConfigPath:        configPath,
+		ConfigPresent:     true,
+		DBPath:            filepath.Join(tempDir, "kui.db"),
+		GitPath:           tempDir,
+		ConnectorProvider: func(ctx context.Context, hostID string) (libvirtconn.Connector, error) { return mock, nil },
+	})
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	var loginResp struct{ Token string }
+	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
+	return handler, loginResp.Token
+}
+
+// --- getConnectorForHost host not found (via handler) ---
+
+func TestGetHostPools_HostNotInConfig(t *testing.T) {
+	t.Parallel()
+	// ConnectorProvider returns error for unknown host
+	handler, token := authHandler(t, func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+		return nil, errors.New("host not found")
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/hosts/nonexistent/pools", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 when host not found, got %d", rec.Code)
+	}
+}
 
 func TestCreateTemplate_Success(t *testing.T) {
 	t.Parallel()

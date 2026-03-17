@@ -2,10 +2,17 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -436,5 +443,160 @@ func TestGetFileStatError(t *testing.T) {
 	tempDir := t.TempDir()
 	if err := getFileStatError(tempDir); err != nil {
 		t.Errorf("getFileStatError(existing) = %v", err)
+	}
+}
+
+func TestBuildApplication_ConfigPathStatError(t *testing.T) {
+	t.Cleanup(func() { os.Unsetenv("KUI_DB_PATH") })
+
+	// Use a path that causes stat to fail with non-ErrNotExist (e.g. permission denied)
+	tempDir := t.TempDir()
+	restrictedDir := filepath.Join(tempDir, "restricted")
+	if err := os.Mkdir(restrictedDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.Chmod(restrictedDir, 0o000); err != nil {
+		t.Skip("chmod 000 not supported or not effective")
+	}
+	defer os.Chmod(restrictedDir, 0o700)
+
+	cfgPath := filepath.Join(restrictedDir, "config.yaml")
+	opts, err := parseFlags([]string{"--config", cfgPath, "--listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+
+	_, err = buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err == nil {
+		t.Fatal("expected error when config path stat fails with non-ErrNotExist")
+	}
+	if !strings.Contains(err.Error(), "read config path") {
+		t.Errorf("expected config path error, got %v", err)
+	}
+}
+
+func TestBuildApplication_GitInitFailure(t *testing.T) {
+	t.Cleanup(func() { os.Unsetenv("KUI_DB_PATH") })
+
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "kui.db")
+	configPath := filepath.Join(tempDir, "config.yaml")
+	gitPath := filepath.Join(tempDir, "git")
+	configContent := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "0123456789abcdef0123456789abcdef"
+db:
+  path: ` + dbPath + `
+git:
+  path: ` + gitPath + `
+`)
+	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	// Create git path as a file so git.Init fails (cannot create .git in a file)
+	if err := os.WriteFile(gitPath, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write git path: %v", err)
+	}
+
+	opts, err := parseFlags([]string{"--config", configPath, "--listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+
+	_, err = buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err == nil {
+		t.Fatal("expected error when git init fails")
+	}
+	if !strings.Contains(err.Error(), "init git") {
+		t.Errorf("expected git init error, got %v", err)
+	}
+}
+
+func TestShutdown_NilApp(t *testing.T) {
+	t.Parallel()
+	var app *application
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := app.shutdown(ctx); err != nil {
+		t.Errorf("shutdown(nil) should return nil, got %v", err)
+	}
+}
+
+func TestParseFlags_ValidTLSPair(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "cert.pem")
+	keyPath := filepath.Join(tempDir, "key.pem")
+	if err := os.WriteFile(certPath, []byte("cert"), 0o600); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("key"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	opts, err := parseFlags([]string{"--listen", "127.0.0.1:0", "--tls-cert", certPath, "--tls-key", keyPath})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+	if opts.tlsCert != certPath || opts.tlsKey != keyPath {
+		t.Errorf("unexpected tls opts: cert=%q key=%q", opts.tlsCert, opts.tlsKey)
+	}
+}
+
+func TestStartServer_TLS(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	certPath, keyPath := filepath.Join(tempDir, "cert.pem"), filepath.Join(tempDir, "key.pem")
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	template := x509.Certificate{SerialNumber: big.NewInt(1)}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create cert: %v", err)
+	}
+	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	keyBytes, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshal key: %v", err)
+	}
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes}), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	opts, err := parseFlags([]string{"--config", filepath.Join(tempDir, "nonexistent.yaml"), "--listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+	os.Setenv("KUI_DB_PATH", filepath.Join(tempDir, "kui.db"))
+	t.Cleanup(func() { os.Unsetenv("KUI_DB_PATH") })
+
+	app, err := buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("buildApplication: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = app.shutdown(ctx)
+	}()
+
+	listener, err := app.startServer(opts.listen, certPath, keyPath)
+	if err != nil {
+		t.Fatalf("startServer: %v", err)
+	}
+	// Verify TLS server is listening (skip cert verification for self-signed)
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	resp, err := client.Get(fmt.Sprintf("https://%s/", listener.Addr().String()))
+	if err != nil {
+		t.Fatalf("GET https: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
 }

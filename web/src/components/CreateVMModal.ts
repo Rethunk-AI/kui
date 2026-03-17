@@ -324,6 +324,14 @@ export function renderCreateVMModal(
     if (e.target === overlay) onClose();
   });
 
+  overlay.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    }
+  });
+
   container.appendChild(overlay);
   toggleDiskFields();
 }

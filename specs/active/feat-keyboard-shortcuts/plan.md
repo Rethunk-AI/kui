@@ -144,7 +144,7 @@ No API changes. Frontend-only.
 
 ```bash
 go build -o bin/ ./cmd/...
-cd web && npm run build
+cd web && corepack yarn run build
 ```
 
 - [ ] Enter opens console when VM row focused

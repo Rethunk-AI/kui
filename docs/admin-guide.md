@@ -77,7 +77,7 @@ go build ./...
 go test ./...
 ```
 
-Frontend: `cd web && npm install && npm run build`. Embedded in binary via `//go:embed`; or set `KUI_WEB_DIR` to serve from disk. See [Makefile](../Makefile).
+Frontend: `corepack enable` (once), then `cd web && corepack yarn install && corepack yarn run build`. Uses Yarn 4 via Corepack (`packageManager` in package.json). Embedded in binary via `//go:embed`; or set `KUI_WEB_DIR` to serve from disk. See [Makefile](../Makefile).
 
 ---
 

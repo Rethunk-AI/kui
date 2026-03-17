@@ -2,7 +2,7 @@
 all: web build test vet
 
 web:
-	cd web && npm run build
+	cd web && corepack yarn install && corepack yarn run build
 
 build:
 	go build -o bin/ ./cmd/...

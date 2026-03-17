@@ -173,7 +173,7 @@ Achieve WCAG 2.1 AAA accessibility for the KUI web UI. Target: full a11y complia
 
 ## Testing
 
-- **Automated:** `npm run build` + `npx pa11y http://localhost:...` or axe-core in Playwright
+- **Automated:** `corepack yarn run build` + `npx pa11y http://localhost:...` or axe-core in Playwright
 - **Manual:** Keyboard-only; screen reader (NVDA/VoiceOver)
 - **Lint:** Consider `eslint-plugin-jsx-a11y` if migrating to JSX; for vanilla TS, manual review
 
@@ -182,7 +182,7 @@ Achieve WCAG 2.1 AAA accessibility for the KUI web UI. Target: full a11y complia
 ## Verification Steps
 
 ```bash
-cd web && npm run build
+cd web && corepack yarn run build
 npx pa11y-ci  # or pa11y on built output
 ```
 

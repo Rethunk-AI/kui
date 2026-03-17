@@ -113,6 +113,45 @@ export async function claimVM(
   });
 }
 
+export interface BulkClaimOrphanItem {
+  host_id: string;
+  libvirt_uuid: string;
+  display_name?: string;
+}
+
+export interface BulkClaimResponse {
+  claimed: Array<{ host_id: string; libvirt_uuid: string; display_name: string }>;
+  conflicts: Array<{ host_id: string; libvirt_uuid: string; reason: string }>;
+}
+
+export async function bulkClaimOrphans(
+  items: BulkClaimOrphanItem[]
+): Promise<BulkClaimResponse> {
+  return apiFetch<BulkClaimResponse>("/orphans/claim", {
+    method: "POST",
+    body: JSON.stringify({ items }),
+  });
+}
+
+export interface BulkDestroyOrphanItem {
+  host_id: string;
+  libvirt_uuid: string;
+}
+
+export interface BulkDestroyResponse {
+  destroyed: Array<{ host_id: string; libvirt_uuid: string }>;
+  failed: Array<{ host_id: string; libvirt_uuid: string; reason: string }>;
+}
+
+export async function bulkDestroyOrphans(
+  items: BulkDestroyOrphanItem[]
+): Promise<BulkDestroyResponse> {
+  return apiFetch<BulkDestroyResponse>("/orphans/destroy", {
+    method: "POST",
+    body: JSON.stringify({ items }),
+  });
+}
+
 export async function recoverVM(
   hostId: string,
   libvirtUuid: string
@@ -201,4 +240,51 @@ export async function fetchHostPoolVolumes(
 
 export async function fetchHostNetworks(hostId: string): Promise<Network[]> {
   return apiFetch<Network[]>(`/hosts/${encodeURIComponent(hostId)}/networks`);
+}
+
+export interface VMDetail {
+  host_id: string;
+  libvirt_uuid: string;
+  display_name: string | null;
+  claimed: boolean;
+  status: string;
+  console_preference: string | null;
+  last_access: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchDomainXML(
+  hostId: string,
+  libvirtUuid: string
+): Promise<string> {
+  const url = `${API_BASE}/hosts/${encodeURIComponent(hostId)}/vms/${encodeURIComponent(libvirtUuid)}/domain-xml`;
+  const res = await fetch(url, {
+    credentials: "include",
+    headers: { Accept: "application/xml" },
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new ApiError(res.status, body || `HTTP ${res.status}`);
+  }
+  return res.text();
+}
+
+export async function putDomainXML(
+  hostId: string,
+  libvirtUuid: string,
+  xml: string
+): Promise<VMDetail> {
+  const url = `${API_BASE}/hosts/${encodeURIComponent(hostId)}/vms/${encodeURIComponent(libvirtUuid)}/domain-xml`;
+  const res = await fetch(url, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/xml" },
+    body: xml,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new ApiError(res.status, body || `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<VMDetail>;
 }

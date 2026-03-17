@@ -1,11 +1,24 @@
 /**
  * VM list UI with month/year grouping.
  * Spec §6: flat list, group by last_access (or created_at fallback), display_name, status, relative-time.
- * Orphans in separate section with Claim.
+ * Orphans in separate section with Claim. Bulk claim/destroy with checkboxes.
  */
-import { ApiError, claimVM, recoverVM, type VM, type Orphan, type VMsResponse } from "../lib/api";
+import {
+  ApiError,
+  bulkClaimOrphans,
+  bulkDestroyOrphans,
+  claimVM,
+  recoverVM,
+  type Orphan,
+  type VM,
+  type VMsResponse,
+} from "../lib/api";
 import { addAlert } from "../lib/alerts";
 import { showToast } from "../lib/toast";
+
+function orphanKey(o: Orphan): string {
+  return `${o.host_id}:${o.libvirt_uuid}`;
+}
 
 const GROUP_BY_LAST_ACCESS = "last_access";
 const GROUP_BY_CREATED_AT = "created_at";
@@ -95,6 +108,7 @@ export interface VMListProps {
   onOpenConsole?: (vm: VM) => void;
   onOpenCreateModal?: () => void;
   onOpenCloneModal?: (vm: VM) => void;
+  onOpenDomainXMLEditor?: (vm: VM) => void;
   /** Called when selection changes (arrow keys or click). Parent stores selection for shortcuts. */
   onRowSelect?: (vm: VM, index: number) => void;
 }
@@ -111,6 +125,7 @@ export function renderVMList(
     onOpenConsole,
     onOpenCreateModal,
     onOpenCloneModal,
+    onOpenDomainXMLEditor,
     onRowSelect,
   } = props;
 
@@ -218,6 +233,7 @@ export function renderVMList(
           <div class="vm-list__row-actions">
             ${stuck ? `<button type="button" class="vm-list__btn vm-list__btn--recover" title="Recover stuck VM">Recover</button>` : ""}
             ${onOpenCloneModal ? `<button type="button" class="vm-list__btn vm-list__btn--clone" title="Clone VM">Clone</button>` : ""}
+            ${onOpenDomainXMLEditor ? `<button type="button" class="vm-list__btn vm-list__btn--edit-xml" title="Edit domain XML">Edit XML</button>` : ""}
             <button type="button" class="vm-list__btn vm-list__btn--console" data-host="${escapeAttr(vm.host_id)}" data-uuid="${escapeAttr(vm.libvirt_uuid)}" title="Open console">Console</button>
           </div>
         `;
@@ -237,6 +253,10 @@ export function renderVMList(
         const cloneBtn = li.querySelector(".vm-list__btn--clone");
         if (cloneBtn && onOpenCloneModal) {
           cloneBtn.addEventListener("click", () => onOpenCloneModal(vm));
+        }
+        const editXmlBtn = li.querySelector(".vm-list__btn--edit-xml");
+        if (editXmlBtn && onOpenDomainXMLEditor) {
+          editXmlBtn.addEventListener("click", () => onOpenDomainXMLEditor(vm));
         }
         const consoleBtn = li.querySelector(".vm-list__btn--console");
         if (consoleBtn && onOpenConsole) {
@@ -262,6 +282,7 @@ export function renderVMList(
   container.appendChild(vmListEl);
 
   if (data.orphans.length > 0) {
+    const selectedOrphanIds = new Set<string>();
     const orphansSection = document.createElement("section");
     orphansSection.className = "vm-list-orphans";
     orphansSection.setAttribute("aria-labelledby", "orphans-heading");
@@ -270,40 +291,109 @@ export function renderVMList(
     const orphansTitle = document.createElement("h2");
     orphansTitle.id = "orphans-heading";
     orphansTitle.className = "vm-list-orphans__title";
-    orphansTitle.innerHTML = `
-      <button type="button" class="vm-list-orphans__toggle" aria-expanded="true">
-        Orphan VMs (${data.orphans.length})
-      </button>
-    `;
+    const selectAllCheckbox = document.createElement("input");
+    selectAllCheckbox.type = "checkbox";
+    selectAllCheckbox.className = "vm-list-orphans__select-all";
+    selectAllCheckbox.setAttribute("aria-label", "Select all orphan VMs");
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "vm-list-orphans__toggle";
+    toggleBtn.setAttribute("aria-expanded", "true");
+    toggleBtn.textContent = `Orphan VMs (${data.orphans.length})`;
+    orphansTitle.appendChild(selectAllCheckbox);
+    orphansTitle.appendChild(toggleBtn);
     orphansHeader.appendChild(orphansTitle);
+
     const orphansBody = document.createElement("div");
     orphansBody.className = "vm-list-orphans__body";
+    const bulkBar = document.createElement("div");
+    bulkBar.className = "vm-list-orphans__bulk-bar";
+    bulkBar.hidden = true;
+    const bulkClaimBtn = document.createElement("button");
+    bulkClaimBtn.type = "button";
+    bulkClaimBtn.className = "vm-list__btn vm-list__btn--bulk-claim";
+    const bulkDestroyBtn = document.createElement("button");
+    bulkDestroyBtn.type = "button";
+    bulkDestroyBtn.className = "vm-list__btn vm-list__btn--bulk-destroy";
+    bulkBar.appendChild(bulkClaimBtn);
+    bulkBar.appendChild(bulkDestroyBtn);
+
     const orphansList = document.createElement("ul");
     orphansList.className = "vm-list-orphans__list";
 
+    const updateBulkBar = (): void => {
+      const n = selectedOrphanIds.size;
+      bulkBar.hidden = n === 0;
+      bulkClaimBtn.textContent = `Claim selected (${n})`;
+      bulkDestroyBtn.textContent = `Destroy selected (${n})`;
+      selectAllCheckbox.checked = n > 0 && n === data.orphans.length;
+      selectAllCheckbox.indeterminate = n > 0 && n < data.orphans.length;
+    };
+
+    selectAllCheckbox.addEventListener("change", () => {
+      if (selectAllCheckbox.checked) {
+        for (const o of data.orphans) selectedOrphanIds.add(orphanKey(o));
+      } else {
+        selectedOrphanIds.clear();
+      }
+      orphansList.querySelectorAll<HTMLInputElement>(".vm-list-orphans__checkbox").forEach((cb) => {
+        cb.checked = selectAllCheckbox.checked;
+      });
+      updateBulkBar();
+    });
+
     let expanded = true;
-    orphansHeader.querySelector(".vm-list-orphans__toggle")?.addEventListener("click", () => {
+    toggleBtn.addEventListener("click", () => {
       expanded = !expanded;
       orphansBody.classList.toggle("vm-list-orphans__body--collapsed", !expanded);
-      (orphansHeader.querySelector(".vm-list-orphans__toggle") as HTMLButtonElement).setAttribute("aria-expanded", String(expanded));
+      toggleBtn.setAttribute("aria-expanded", String(expanded));
     });
 
     for (const orphan of data.orphans) {
+      const key = orphanKey(orphan);
       const li = document.createElement("li");
       li.className = "vm-list-orphans__item";
-      li.innerHTML = `
-        <span class="vm-list-orphans__name">${escapeHtml(orphan.name)}</span>
-        <span class="vm-list-orphans__host">${escapeHtml(orphan.host_id)}</span>
-        <button type="button" class="vm-list__btn vm-list__btn--claim" data-host="${escapeAttr(orphan.host_id)}" data-uuid="${escapeAttr(orphan.libvirt_uuid)}" data-name="${escapeAttr(orphan.name)}">Claim</button>
-      `;
-      const claimBtn = li.querySelector(".vm-list__btn--claim");
-      if (claimBtn) {
-        claimBtn.addEventListener("click", () => {
-          handleClaim(orphan, claimBtn as HTMLButtonElement, onRefresh);
-        });
-      }
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "vm-list-orphans__checkbox";
+      checkbox.dataset.key = key;
+      checkbox.setAttribute("aria-label", `Select ${escapeAttr(orphan.name)}`);
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) selectedOrphanIds.add(key);
+        else selectedOrphanIds.delete(key);
+        updateBulkBar();
+      });
+      li.appendChild(checkbox);
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "vm-list-orphans__name";
+      nameSpan.textContent = orphan.name;
+      li.appendChild(nameSpan);
+      const hostSpan = document.createElement("span");
+      hostSpan.className = "vm-list-orphans__host";
+      hostSpan.textContent = orphan.host_id;
+      li.appendChild(hostSpan);
+      const claimBtn = document.createElement("button");
+      claimBtn.type = "button";
+      claimBtn.className = "vm-list__btn vm-list__btn--claim";
+      claimBtn.dataset.host = orphan.host_id;
+      claimBtn.dataset.uuid = orphan.libvirt_uuid;
+      claimBtn.dataset.name = orphan.name;
+      claimBtn.textContent = "Claim";
+      claimBtn.addEventListener("click", () => {
+        handleClaim(orphan, claimBtn, onRefresh);
+      });
+      li.appendChild(claimBtn);
       orphansList.appendChild(li);
     }
+
+    bulkClaimBtn.addEventListener("click", () => {
+      handleBulkClaim(data.orphans, selectedOrphanIds, bulkClaimBtn, bulkDestroyBtn, onRefresh, updateBulkBar);
+    });
+    bulkDestroyBtn.addEventListener("click", () => {
+      handleBulkDestroy(data.orphans, selectedOrphanIds, bulkClaimBtn, bulkDestroyBtn, onRefresh, updateBulkBar);
+    });
+
+    orphansBody.appendChild(bulkBar);
     orphansBody.appendChild(orphansList);
     orphansSection.appendChild(orphansHeader);
     orphansSection.appendChild(orphansBody);
@@ -349,6 +439,91 @@ async function handleRecover(
   } catch (err) {
     btn.disabled = false;
     const msg = err instanceof ApiError ? err.message : "Recover failed";
+    showToast(msg, "warn");
+    addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);
+  }
+}
+
+async function handleBulkClaim(
+  orphans: Orphan[],
+  selectedOrphanIds: Set<string>,
+  claimBtn: HTMLButtonElement,
+  destroyBtn: HTMLButtonElement,
+  onRefresh: () => void,
+  updateBulkBar: () => void
+): Promise<void> {
+  const items = orphans
+    .filter((o) => selectedOrphanIds.has(orphanKey(o)))
+    .map((o) => ({ host_id: o.host_id, libvirt_uuid: o.libvirt_uuid, display_name: o.name }));
+  if (items.length === 0) return;
+  claimBtn.disabled = true;
+  destroyBtn.disabled = true;
+  try {
+    const resp = await bulkClaimOrphans(items);
+    const claimedN = resp.claimed.length;
+    const conflictN = resp.conflicts.length;
+    if (conflictN === 0) {
+      showToast(`Claimed ${claimedN} orphan(s)`, "success");
+    } else if (claimedN === 0) {
+      const first = resp.conflicts[0];
+      showToast(`${first.reason}: ${first.host_id}/${first.libvirt_uuid}`, "warn");
+      if (conflictN > 1) {
+        addAlert("bulk_claim", `${conflictN} failed: ${resp.conflicts.map((c) => c.reason).join(", ")}`);
+      }
+    } else {
+      showToast(`Claimed ${claimedN}, ${conflictN} failed`, "warn");
+      addAlert("bulk_claim", resp.conflicts.map((c) => `${c.host_id}/${c.libvirt_uuid}: ${c.reason}`).join("; "));
+    }
+    selectedOrphanIds.clear();
+    updateBulkBar();
+    onRefresh();
+  } catch (err) {
+    claimBtn.disabled = false;
+    destroyBtn.disabled = false;
+    const msg = err instanceof ApiError ? err.message : "Request failed";
+    showToast(msg, "warn");
+    addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);
+  }
+}
+
+async function handleBulkDestroy(
+  orphans: Orphan[],
+  selectedOrphanIds: Set<string>,
+  claimBtn: HTMLButtonElement,
+  destroyBtn: HTMLButtonElement,
+  onRefresh: () => void,
+  updateBulkBar: () => void
+): Promise<void> {
+  const items = orphans
+    .filter((o) => selectedOrphanIds.has(orphanKey(o)))
+    .map((o) => ({ host_id: o.host_id, libvirt_uuid: o.libvirt_uuid }));
+  if (items.length === 0) return;
+  if (!confirm(`Destroy ${items.length} orphan(s)? This cannot be undone.`)) return;
+  claimBtn.disabled = true;
+  destroyBtn.disabled = true;
+  try {
+    const resp = await bulkDestroyOrphans(items);
+    const destroyedN = resp.destroyed.length;
+    const failedN = resp.failed.length;
+    if (failedN === 0) {
+      showToast(`Destroyed ${destroyedN} orphan(s)`, "success");
+    } else if (destroyedN === 0) {
+      const first = resp.failed[0];
+      showToast(`${first.reason}: ${first.host_id}/${first.libvirt_uuid}`, "warn");
+      if (failedN > 1) {
+        addAlert("bulk_destroy", `${failedN} failed: ${resp.failed.map((f) => f.reason).join(", ")}`);
+      }
+    } else {
+      showToast(`Destroyed ${destroyedN}, ${failedN} failed`, "warn");
+      addAlert("bulk_destroy", resp.failed.map((f) => `${f.host_id}/${f.libvirt_uuid}: ${f.reason}`).join("; "));
+    }
+    selectedOrphanIds.clear();
+    updateBulkBar();
+    onRefresh();
+  } catch (err) {
+    claimBtn.disabled = false;
+    destroyBtn.disabled = false;
+    const msg = err instanceof ApiError ? err.message : "Request failed";
     showToast(msg, "warn");
     addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);
   }

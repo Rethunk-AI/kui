@@ -247,6 +247,38 @@ input[type="checkbox"] {
   margin: 0;
   font-size: inherit;
   font-weight: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.vm-list-orphans__select-all {
+  flex-shrink: 0;
+}
+.vm-list-orphans__checkbox {
+  flex-shrink: 0;
+}
+.vm-list-orphans__bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  margin-bottom: 0.25rem;
+}
+.vm-list__btn--bulk-claim {
+  background: rgba(76, 175, 80, 0.2);
+  border-color: rgba(76, 175, 80, 0.4);
+  color: var(--kui-status-success);
+}
+.vm-list__btn--bulk-claim:hover:not(:disabled) {
+  background: rgba(76, 175, 80, 0.3);
+}
+.vm-list__btn--bulk-destroy {
+  background: rgba(229, 115, 115, 0.2);
+  border-color: rgba(229, 115, 115, 0.4);
+  color: var(--kui-status-error);
+}
+.vm-list__btn--bulk-destroy:hover:not(:disabled) {
+  background: rgba(229, 115, 115, 0.3);
 }
 .vm-list-orphans__toggle {
   padding: 0.35rem 0;
@@ -395,6 +427,25 @@ input[type="checkbox"] {
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+.modal--wide {
+  max-width: 48rem;
+}
+.modal__textarea {
+  width: 100%;
+  min-height: 20rem;
+  padding: 0.5rem;
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace;
+  font-size: 0.85rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: var(--kui-fg);
+  resize: vertical;
+}
+.modal__textarea:focus {
+  outline: 2px solid var(--kui-focus-outline);
+  outline-offset: 2px;
 }
 .modal__header {
   display: flex;

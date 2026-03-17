@@ -12,7 +12,9 @@ export type AlertType =
   | "console_failure"
   | "vm_state_changed"
   | "vm_state_failure"
-  | "api_error";
+  | "api_error"
+  | "bulk_claim"
+  | "bulk_destroy";
 
 export interface Alert {
   id: string;

@@ -23,6 +23,7 @@ import {
 } from "./components/FirstRunChecklist";
 import { renderCreateVMModal } from "./components/CreateVMModal";
 import { renderCloneVMModal } from "./components/CloneVMModal";
+import { renderDomainXMLEditor } from "./components/DomainXMLEditor";
 import { renderAlertsPanel } from "./components/AlertsPanel";
 import { renderHostSelector } from "./components/HostSelector";
 import { renderVMList } from "./components/VMList";
@@ -196,6 +197,17 @@ function renderMain(
     });
   };
 
+  const openDomainXMLEditor = (vm: VM): void => {
+    modalContainer.innerHTML = "";
+    renderDomainXMLEditor(modalContainer, {
+      vm,
+      onClose: () => {
+        modalContainer.innerHTML = "";
+      },
+      onSuccess: onDataChange,
+    });
+  };
+
   const groupBy =
     preferences?.list_view_options?.list_view?.group_by === "created_at"
       ? "created_at"
@@ -227,6 +239,7 @@ function renderMain(
       onOpenConsole: openConsoleForVM,
       onOpenCreateModal: openCreateModal,
       onOpenCloneModal: openCloneModal,
+      onOpenDomainXMLEditor: openDomainXMLEditor,
       onRowSelect: (vm, index) => {
         selectionRef.vm = vm;
         selectionRef.index = index;

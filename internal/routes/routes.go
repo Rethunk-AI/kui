@@ -30,6 +30,7 @@ import (
 	"github.com/kui/kui/internal/audit"
 	"github.com/kui/kui/internal/broadcaster"
 	"github.com/kui/kui/internal/config"
+	"github.com/kui/kui/internal/domainxml"
 	"github.com/kui/kui/internal/db"
 	"github.com/kui/kui/internal/eventsource"
 	"github.com/kui/kui/internal/libvirtconn"
@@ -240,6 +241,8 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Get("/api/hosts/{host_id}/networks", state.getHostNetworks())
 
 	router.Get("/api/hosts/{host_id}/vms/{libvirt_uuid}", state.getVMDetail())
+	router.Get("/api/hosts/{host_id}/vms/{libvirt_uuid}/domain-xml", state.getDomainXML())
+	router.Put("/api/hosts/{host_id}/vms/{libvirt_uuid}/domain-xml", state.putDomainXML())
 	router.Patch("/api/hosts/{host_id}/vms/{libvirt_uuid}", state.patchVMConfig())
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/start", state.vmStart())
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/stop", state.vmStop())
@@ -253,6 +256,9 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Get("/api/hosts/{host_id}/vms/{libvirt_uuid}/serial", state.serialProxy())
 
 	router.Post("/api/vms", state.createVM())
+
+	router.Post("/api/orphans/claim", state.orphansBulkClaim())
+	router.Post("/api/orphans/destroy", state.orphansBulkDestroy())
 
 	router.Get("/api/templates", state.getTemplates())
 	router.Post("/api/templates", state.createTemplate())
@@ -1048,6 +1054,162 @@ func (r *routerState) patchVMConfig() http.HandlerFunc {
 	}
 }
 
+func (r *routerState) getDomainXML() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if _, ok := mw.UserFromContext(req); !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		hostID := chi.URLParam(req, "host_id")
+		libvirtUUID := chi.URLParam(req, "libvirt_uuid")
+		if hostID == "" || libvirtUUID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id and libvirt_uuid required")
+			return
+		}
+		meta, err := r.db.GetVMMetadata(req.Context(), hostID, libvirtUUID)
+		if err != nil || meta == nil || !meta.Claimed {
+			writeJSONError(w, http.StatusNotFound, "VM not found")
+			return
+		}
+		conn, err := r.getConnectorForHost(req.Context(), hostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		domainXML, err := conn.GetDomainXML(req.Context(), libvirtUUID)
+		if err != nil {
+			r.logger.Error("get domain XML failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to get domain XML")
+			return
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(domainXML))
+	}
+}
+
+func (r *routerState) putDomainXML() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		user, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		hostID := chi.URLParam(req, "host_id")
+		libvirtUUID := chi.URLParam(req, "libvirt_uuid")
+		if hostID == "" || libvirtUUID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id and libvirt_uuid required")
+			return
+		}
+		meta, err := r.db.GetVMMetadata(req.Context(), hostID, libvirtUUID)
+		if err != nil || meta == nil || !meta.Claimed {
+			writeJSONError(w, http.StatusNotFound, "VM not found")
+			return
+		}
+		conn, err := r.getConnectorForHost(req.Context(), hostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		state, err := conn.GetState(req.Context(), libvirtUUID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "VM not found")
+			return
+		}
+		if state != libvirtconn.DomainStateShutoff {
+			writeJSONError(w, http.StatusBadRequest, "VM must be stopped to edit domain XML")
+			return
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		afterXML := string(body)
+		if err := domainxml.ValidateSafe(afterXML, libvirtUUID); err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		beforeXML, err := conn.GetDomainXML(req.Context(), libvirtUUID)
+		if err != nil {
+			r.logger.Error("get domain XML failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to get domain XML")
+			return
+		}
+		_, err = conn.DefineXML(req.Context(), afterXML)
+		if err != nil {
+			r.logger.Error("define domain XML failed", "error", err)
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		ts := time.Now().UTC().Format(audit.TimestampFormat)
+		diffPath := fmt.Sprintf("audit/vm/%s/%s/%s.diff", hostID, libvirtUUID, ts)
+		diffContent := domainXMLDiff(beforeXML, afterXML)
+		userID := user.ID
+		ev := audit.Event{
+			EventType:  "vm_config_change",
+			EntityType: "vm",
+			EntityID:   libvirtUUID,
+			UserID:     &userID,
+			Payload: map[string]interface{}{
+				"host_id": hostID,
+				"changed": map[string]bool{"domain_xml": true},
+			},
+		}
+		if err := audit.RecordEventWithDiff(req.Context(), r.db, r.configuredGitPath(), ev, diffPath, diffContent); err != nil {
+			r.logger.Error("audit vm_config_change failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to record audit")
+			return
+		}
+		meta, _ = r.db.GetVMMetadata(req.Context(), hostID, libvirtUUID)
+		domainInfo, _ := conn.LookupByUUID(req.Context(), libvirtUUID)
+		now := time.Now().UTC().Format(time.RFC3339)
+		displayName := domainInfo.Name
+		if meta != nil && meta.DisplayName.Valid && meta.DisplayName.String != "" {
+			displayName = meta.DisplayName.String
+		}
+		var consolePref, lastAccess *string
+		if meta != nil && meta.ConsolePreference.Valid {
+			cp := meta.ConsolePreference.String
+			consolePref = &cp
+		}
+		lastAccess = &now
+		updatedAt := now
+		if meta != nil {
+			updatedAt = meta.UpdatedAt
+		}
+		writeJSON(w, http.StatusOK, vmDetailResponse{
+			HostID:            hostID,
+			LibvirtUUID:       libvirtUUID,
+			DisplayName:       &displayName,
+			Claimed:           true,
+			Status:            string(domainInfo.State),
+			ConsolePreference: consolePref,
+			LastAccess:        lastAccess,
+			CreatedAt:         meta.CreatedAt,
+			UpdatedAt:         updatedAt,
+		})
+	}
+}
+
+func domainXMLDiff(before, after string) string {
+	var sb strings.Builder
+	sb.WriteString("--- domain.xml (before)\n")
+	sb.WriteString("+++ domain.xml (after)\n")
+	sb.WriteString(unifiedDiffLines(before, after))
+	return sb.String()
+}
+
 func vmConfigChangeDiff(beforeMeta, afterMeta map[string]interface{}, beforeXML, afterXML string, domainChanged bool) string {
 	var sb strings.Builder
 	sb.WriteString("--- vm_metadata (before)\n")
@@ -1355,6 +1517,271 @@ func (r *routerState) vmClaim() http.HandlerFunc {
 			CreatedAt:   createdAt,
 			UpdatedAt:   updatedAt,
 		})
+	}
+}
+
+type orphansBulkClaimItem struct {
+	HostID      string  `json:"host_id"`
+	LibvirtUUID string  `json:"libvirt_uuid"`
+	DisplayName *string `json:"display_name,omitempty"`
+}
+
+type orphansBulkClaimRequest struct {
+	Items []orphansBulkClaimItem `json:"items"`
+}
+
+type orphansBulkClaimClaimedItem struct {
+	HostID      string `json:"host_id"`
+	LibvirtUUID string `json:"libvirt_uuid"`
+	DisplayName string `json:"display_name"`
+}
+
+type orphansBulkClaimConflictItem struct {
+	HostID      string `json:"host_id"`
+	LibvirtUUID string `json:"libvirt_uuid"`
+	Reason      string `json:"reason"`
+}
+
+type orphansBulkClaimResponse struct {
+	Claimed   []orphansBulkClaimClaimedItem   `json:"claimed"`
+	Conflicts []orphansBulkClaimConflictItem  `json:"conflicts"`
+}
+
+func (r *routerState) orphansBulkClaim() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		user, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		var payload orphansBulkClaimRequest
+		if err := decodeJSON(req.Body, &payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if len(payload.Items) == 0 {
+			writeJSONError(w, http.StatusBadRequest, "items required and must not be empty")
+			return
+		}
+		metadataRows, err := r.db.ListVMMetadata(req.Context())
+		if err != nil {
+			r.logger.Error("list vm_metadata failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to list VMs")
+			return
+		}
+		metaByKey := make(map[string]db.VMMetadataRow)
+		for _, row := range metadataRows {
+			metaByKey[row.HostID+"\x00"+row.LibvirtUUID] = row
+		}
+		var claimed []orphansBulkClaimClaimedItem
+		var conflicts []orphansBulkClaimConflictItem
+		for _, item := range payload.Items {
+			hostID := strings.TrimSpace(item.HostID)
+			libvirtUUID := strings.TrimSpace(item.LibvirtUUID)
+			if hostID == "" || libvirtUUID == "" {
+				conflicts = append(conflicts, orphansBulkClaimConflictItem{
+					HostID:      item.HostID,
+					LibvirtUUID: item.LibvirtUUID,
+					Reason:      "invalid_item",
+				})
+				continue
+			}
+			key := hostID + "\x00" + libvirtUUID
+			meta, hasMeta := metaByKey[key]
+			if hasMeta && meta.Claimed {
+				conflicts = append(conflicts, orphansBulkClaimConflictItem{
+					HostID:      hostID,
+					LibvirtUUID: libvirtUUID,
+					Reason:      "already_claimed",
+				})
+				continue
+			}
+			conn, err := r.getConnectorForHost(req.Context(), hostID)
+			if err != nil {
+				conflicts = append(conflicts, orphansBulkClaimConflictItem{
+					HostID:      hostID,
+					LibvirtUUID: libvirtUUID,
+					Reason:      "host_offline",
+				})
+				continue
+			}
+			domainInfo, err := conn.LookupByUUID(req.Context(), libvirtUUID)
+			conn.Close()
+			if err != nil {
+				conflicts = append(conflicts, orphansBulkClaimConflictItem{
+					HostID:      hostID,
+					LibvirtUUID: libvirtUUID,
+					Reason:      "not_found",
+				})
+				continue
+			}
+			displayName := domainInfo.Name
+			if item.DisplayName != nil && strings.TrimSpace(*item.DisplayName) != "" {
+				displayName = strings.TrimSpace(*item.DisplayName)
+			}
+			if err := r.db.UpsertVMMetadataClaim(req.Context(), hostID, libvirtUUID, displayName); err != nil {
+				r.logger.Error("bulk claim upsert failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
+				conflicts = append(conflicts, orphansBulkClaimConflictItem{
+					HostID:      hostID,
+					LibvirtUUID: libvirtUUID,
+					Reason:      "claim_failed",
+				})
+				continue
+			}
+			claimed = append(claimed, orphansBulkClaimClaimedItem{
+				HostID:      hostID,
+				LibvirtUUID: libvirtUUID,
+				DisplayName: displayName,
+			})
+			_ = audit.RecordEvent(req.Context(), r.db, audit.Event{
+				EventType:  "vm_lifecycle",
+				EntityType: "vm",
+				EntityID:   libvirtUUID,
+				UserID:     &user.ID,
+				Payload: map[string]string{
+					"action":  "claim",
+					"host_id": hostID,
+				},
+			})
+			metaByKey[key] = db.VMMetadataRow{HostID: hostID, LibvirtUUID: libvirtUUID, Claimed: true}
+		}
+		writeJSON(w, http.StatusOK, orphansBulkClaimResponse{Claimed: claimed, Conflicts: conflicts})
+	}
+}
+
+type orphansBulkDestroyItem struct {
+	HostID      string `json:"host_id"`
+	LibvirtUUID string `json:"libvirt_uuid"`
+}
+
+type orphansBulkDestroyRequest struct {
+	Items []orphansBulkDestroyItem `json:"items"`
+}
+
+type orphansBulkDestroyDestroyedItem struct {
+	HostID      string `json:"host_id"`
+	LibvirtUUID string `json:"libvirt_uuid"`
+}
+
+type orphansBulkDestroyFailedItem struct {
+	HostID      string `json:"host_id"`
+	LibvirtUUID string `json:"libvirt_uuid"`
+	Reason      string `json:"reason"`
+}
+
+type orphansBulkDestroyResponse struct {
+	Destroyed []orphansBulkDestroyDestroyedItem `json:"destroyed"`
+	Failed    []orphansBulkDestroyFailedItem   `json:"failed"`
+}
+
+func (r *routerState) orphansBulkDestroy() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		user, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		var payload orphansBulkDestroyRequest
+		if err := decodeJSON(req.Body, &payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if len(payload.Items) == 0 {
+			writeJSONError(w, http.StatusBadRequest, "items required and must not be empty")
+			return
+		}
+		metadataRows, err := r.db.ListVMMetadata(req.Context())
+		if err != nil {
+			r.logger.Error("list vm_metadata failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to list VMs")
+			return
+		}
+		metaByKey := make(map[string]bool)
+		for _, row := range metadataRows {
+			if row.Claimed {
+				metaByKey[row.HostID+"\x00"+row.LibvirtUUID] = true
+			}
+		}
+		var destroyed []orphansBulkDestroyDestroyedItem
+		var failed []orphansBulkDestroyFailedItem
+		for _, item := range payload.Items {
+			hostID := strings.TrimSpace(item.HostID)
+			libvirtUUID := strings.TrimSpace(item.LibvirtUUID)
+			if hostID == "" || libvirtUUID == "" {
+				failed = append(failed, orphansBulkDestroyFailedItem{
+					HostID:      item.HostID,
+					LibvirtUUID: item.LibvirtUUID,
+					Reason:      "invalid_item",
+				})
+				continue
+			}
+			key := hostID + "\x00" + libvirtUUID
+			if metaByKey[key] {
+				failed = append(failed, orphansBulkDestroyFailedItem{
+					HostID:      hostID,
+					LibvirtUUID: libvirtUUID,
+					Reason:      "claimed",
+				})
+				continue
+			}
+			conn, err := r.getConnectorForHost(req.Context(), hostID)
+			if err != nil {
+				failed = append(failed, orphansBulkDestroyFailedItem{
+					HostID:      hostID,
+					LibvirtUUID: libvirtUUID,
+					Reason:      "host_offline",
+				})
+				continue
+			}
+			domainInfo, err := conn.LookupByUUID(req.Context(), libvirtUUID)
+			if err != nil {
+				conn.Close()
+				failed = append(failed, orphansBulkDestroyFailedItem{
+					HostID:      hostID,
+					LibvirtUUID: libvirtUUID,
+					Reason:      "not_found",
+				})
+				continue
+			}
+			fromState := string(domainInfo.State)
+			_ = conn.Destroy(req.Context(), libvirtUUID)
+			if err := conn.Undefine(req.Context(), libvirtUUID); err != nil {
+				conn.Close()
+				r.logger.Error("bulk destroy undefine failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
+				failed = append(failed, orphansBulkDestroyFailedItem{
+					HostID:      hostID,
+					LibvirtUUID: libvirtUUID,
+					Reason:      "undefine_failed",
+				})
+				continue
+			}
+			conn.Close()
+			destroyed = append(destroyed, orphansBulkDestroyDestroyedItem{
+				HostID:      hostID,
+				LibvirtUUID: libvirtUUID,
+			})
+			_ = audit.RecordEvent(req.Context(), r.db, audit.Event{
+				EventType:  "vm_lifecycle",
+				EntityType: "vm",
+				EntityID:   libvirtUUID,
+				UserID:     &user.ID,
+				Payload: map[string]string{
+					"action":     "destroy",
+					"from_state": fromState,
+					"to_state":   "undefined",
+					"host_id":    hostID,
+				},
+			})
+		}
+		writeJSON(w, http.StatusOK, orphansBulkDestroyResponse{Destroyed: destroyed, Failed: failed})
 	}
 }
 

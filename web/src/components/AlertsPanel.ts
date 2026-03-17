@@ -30,6 +30,8 @@ const TYPE_LABELS: Record<AlertType, string> = {
   vm_state_changed: "VM state changed",
   vm_state_failure: "VM state failure",
   api_error: "API error",
+  bulk_claim: "Bulk claim",
+  bulk_destroy: "Bulk destroy",
 };
 
 function formatTime(ts: number): string {

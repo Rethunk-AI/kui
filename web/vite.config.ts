@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from "vite";
 
 // noVNC's browser.js uses top-level await in CJS; replace with sync fallback for build
@@ -36,6 +37,23 @@ export default defineConfig({
   optimizeDeps: {
     esbuildOptions: {
       target: "esnext",
+    },
+  },
+  test: {
+    environment: "happy-dom",
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html", "lcov"],
+      exclude: [
+        "node_modules/",
+        "**/*.test.ts",
+        "**/*.spec.ts",
+        "**/*.d.ts",
+        "vite.config.ts",
+        ".pnp.*",
+        "dist/",
+        "**/console.ts",
+      ],
     },
   },
   server: {

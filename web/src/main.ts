@@ -48,7 +48,26 @@ function injectSkipLink(): void {
 }
 injectSkipLink();
 
+function renderLoadingIndicator(container: HTMLElement): void {
+  container.innerHTML = "";
+  const wrapper = document.createElement("div");
+  wrapper.className = "loading-indicator";
+  wrapper.setAttribute("role", "status");
+  wrapper.setAttribute("aria-busy", "true");
+  wrapper.setAttribute("aria-live", "polite");
+  const spinner = document.createElement("div");
+  spinner.className = "loading-indicator__spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  const text = document.createElement("span");
+  text.className = "loading-indicator__text";
+  text.textContent = "Loading…";
+  wrapper.appendChild(spinner);
+  wrapper.appendChild(text);
+  container.appendChild(wrapper);
+}
+
 async function bootstrap(): Promise<void> {
+  renderLoadingIndicator(app);
   const setupStatus = await fetchSetupStatus();
 
   if (setupStatus.setup_required) {

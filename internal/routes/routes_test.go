@@ -685,6 +685,7 @@ jwt_secret: "` + testJWTSecret + `"
 		SetupConnectFunc: func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) {
 			return libvirtconn.SetupTestConnector(), nil
 		},
+		KVMCheckFunc: func() (bool, string, error) { return true, "", nil },
 	})
 
 	payload := map[string]string{"host_id": "local", "uri": "qemu:///system", "keyfile": ""}
@@ -3389,6 +3390,7 @@ func TestValidateHost_NoPools(t *testing.T) {
 		DBPath:           filepath.Join(tempDir, "kui.db"),
 		GitPath:          tempDir,
 		SetupConnectFunc: func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) { return mock, nil },
+		KVMCheckFunc:     func() (bool, string, error) { return true, "", nil },
 	})
 
 	payload := map[string]string{"host_id": "local", "uri": "qemu:///system", "keyfile": ""}
@@ -3437,6 +3439,7 @@ func TestValidateHost_NoNetworks(t *testing.T) {
 		DBPath:           filepath.Join(tempDir, "kui.db"),
 		GitPath:          tempDir,
 		SetupConnectFunc: func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) { return mock, nil },
+		KVMCheckFunc:     func() (bool, string, error) { return true, "", nil },
 	})
 
 	payload := map[string]string{"host_id": "local", "uri": "qemu:///system", "keyfile": ""}
@@ -3460,6 +3463,106 @@ func TestValidateHost_NoNetworks(t *testing.T) {
 	}
 	if !strings.Contains(body.Error, "no networks") {
 		t.Errorf("expected error to contain 'no networks', got %q", body.Error)
+	}
+}
+
+func TestValidateHost_KVMUnavailable(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	mock := &mockConnector{
+		pools:    []libvirtconn.StoragePoolInfo{{Name: "default", UUID: "p1", Active: true}},
+		networks: []libvirtconn.NetworkInfo{{Name: "default", UUID: "n1", Active: true}},
+	}
+	kvmSuggestion := "KVM not available. Install: sudo apt install qemu-kvm libvirt-daemon-system (Ubuntu/Debian)"
+	handler := NewRouter(RouterOptions{
+		Logger:           nil,
+		DB:               database,
+		Config:           nil,
+		ConfigPath:       filepath.Join(tempDir, "nonexistent.yaml"),
+		ConfigPresent:    false,
+		DBPath:           filepath.Join(tempDir, "kui.db"),
+		GitPath:          tempDir,
+		SetupConnectFunc: func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) { return mock, nil },
+		KVMCheckFunc:     func() (bool, string, error) { return false, kvmSuggestion, nil },
+	})
+
+	payload := map[string]string{"host_id": "local", "uri": "qemu:///system", "keyfile": ""}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/validate-host", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Valid bool   `json:"valid"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Valid {
+		t.Error("expected valid=false when KVM unavailable")
+	}
+	if body.Error != kvmSuggestion {
+		t.Errorf("expected error %q, got %q", kvmSuggestion, body.Error)
+	}
+}
+
+func TestValidateHost_RemoteURISkipsKVMCheck(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	mock := &mockConnector{
+		pools:    []libvirtconn.StoragePoolInfo{{Name: "default", UUID: "p1", Active: true}},
+		networks: []libvirtconn.NetworkInfo{{Name: "default", UUID: "n1", Active: true}},
+	}
+	kvmCheckCalled := false
+	handler := NewRouter(RouterOptions{
+		Logger:           nil,
+		DB:               database,
+		Config:           nil,
+		ConfigPath:       filepath.Join(tempDir, "nonexistent.yaml"),
+		ConfigPresent:    false,
+		DBPath:           filepath.Join(tempDir, "kui.db"),
+		GitPath:          tempDir,
+		SetupConnectFunc: func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) { return mock, nil },
+		KVMCheckFunc:     func() (bool, string, error) { kvmCheckCalled = true; return false, "should not be used", nil },
+	})
+
+	payload := map[string]string{"host_id": "remote", "uri": "qemu+ssh://user@host/system", "keyfile": "/path/to/key"}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/validate-host", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Valid bool   `json:"valid"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.Valid {
+		t.Errorf("expected valid=true for remote host (KVM check skipped), got valid=false: %s", body.Error)
+	}
+	if kvmCheckCalled {
+		t.Error("KVM check should not be called for remote (qemu+ssh) URI")
 	}
 }
 

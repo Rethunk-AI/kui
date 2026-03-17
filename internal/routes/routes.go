@@ -33,6 +33,7 @@ import (
 	"github.com/kui/kui/internal/domainxml"
 	"github.com/kui/kui/internal/db"
 	"github.com/kui/kui/internal/eventsource"
+	"github.com/kui/kui/internal/kvmcheck"
 	"github.com/kui/kui/internal/libvirtconn"
 	mw "github.com/kui/kui/internal/middleware"
 	"github.com/kui/kui/internal/provision"
@@ -48,6 +49,10 @@ type ConnectorProvider func(ctx context.Context, hostID string) (libvirtconn.Con
 // uses libvirtconn.Connect. Inject a mock in tests to validate empty pools/networks.
 type SetupConnectFunc func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error)
 
+// KVMCheckFunc checks KVM availability on the local host. When nil, the router uses
+// kvmcheck.CheckKVM. Inject a mock in tests to validate KVM failure handling.
+type KVMCheckFunc func() (ok bool, suggestion string, err error)
+
 type RouterOptions struct {
 	Logger            *slog.Logger
 	DB                *db.DB
@@ -59,6 +64,7 @@ type RouterOptions struct {
 	Broadcaster       *broadcaster.Broadcaster
 	ConnectorProvider ConnectorProvider
 	SetupConnectFunc  SetupConnectFunc
+	KVMCheckFunc      KVMCheckFunc
 }
 
 type routerState struct {
@@ -72,6 +78,7 @@ type routerState struct {
 	broadcaster       *broadcaster.Broadcaster
 	connectorProvider ConnectorProvider
 	setupConnectFunc  SetupConnectFunc
+	kvmCheckFunc      KVMCheckFunc
 	setupCompleted    bool
 	setupCompletedMu  sync.Mutex
 }
@@ -251,6 +258,7 @@ func NewRouter(opts RouterOptions) http.Handler {
 		broadcaster:       bc,
 		connectorProvider: opts.ConnectorProvider,
 		setupConnectFunc:  opts.SetupConnectFunc,
+		kvmCheckFunc:      opts.KVMCheckFunc,
 	}
 
 	sessionTimeout := 24 * time.Hour
@@ -3220,6 +3228,29 @@ func (r *routerState) validateHost() http.HandlerFunc {
 			return
 		}
 		defer conn.Close()
+
+		if isLocalLibvirtURI(payload.URI) {
+			check := r.kvmCheckFunc
+			if check == nil {
+				check = kvmcheck.CheckKVM
+			}
+			ok, suggestion, kvmErr := check()
+			if kvmErr != nil {
+				r.logger.Debug("validate-host kvm check failed", "host_id", payload.HostID, "error", kvmErr)
+				writeJSON(w, http.StatusOK, validateHostResponse{
+					Valid: false,
+					Error: sanitizeValidationError(kvmErr.Error()),
+				})
+				return
+			}
+			if !ok {
+				writeJSON(w, http.StatusOK, validateHostResponse{
+					Valid: false,
+					Error: suggestion,
+				})
+				return
+			}
+		}
 
 		pools, err := conn.ListPools(req.Context())
 		if err != nil {

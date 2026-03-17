@@ -1,14 +1,22 @@
-/* KUI global shell tokens and base layout — WCAG 2.1 AAA contrast */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* KUI global shell tokens — Shadcn-compatible + WCAG 2.1 AAA */
 :root {
-  --kui-font: system-ui, -apple-system, sans-serif;
-  --kui-bg: #1a1a1a;
-  --kui-fg: #e0e0e0; /* 13:1 on --kui-bg — 7:1 AAA normal text */
-  --kui-fg-muted: #b0b0b0; /* 8:1 on --kui-bg — 7:1 AAA for secondary text */
-  --kui-focus-outline: #e0e0e0; /* 13:1 on --kui-bg — 3:1 min for UI components */
-  --kui-focus-outline-offset: 2px;
-  --kui-status-success: #81c784; /* 8.6:1 on --kui-bg */
-  --kui-status-warning: #ffb74d; /* 10:1 on --kui-bg */
-  --kui-status-error: #ec8a8a; /* 7.1:1 on --kui-bg — #e57373 was 5.8:1 */
+  /* Shadcn design tokens (WCAG AAA overrides) */
+  --background: #1a1a1a;
+  --foreground: #e0e0e0; /* 13:1 on --background — 7:1 AAA normal text */
+  --muted: rgba(255, 255, 255, 0.08);
+  --muted-foreground: #b0b0b0; /* 8:1 on --background — 7:1 AAA secondary text */
+  --border: rgba(255, 255, 255, 0.15);
+  --input: rgba(255, 255, 255, 0.08);
+  --ring: #e0e0e0; /* 3:1 focus */
+  --radius: 0.5rem;
+  --destructive: #ec8a8a; /* 7.1:1 on --background */
+  --success: #81c784; /* 8.6:1 on --background */
+  --warning: #ffb74d; /* 10:1 on --background */
+  --font-sans: system-ui, -apple-system, sans-serif;
 }
 
 * {
@@ -17,15 +25,15 @@
 
 /* Focus outline — 3:1 contrast against background (WCAG 2.4.7) */
 :focus-visible {
-  outline: 2px solid var(--kui-focus-outline);
-  outline-offset: var(--kui-focus-outline-offset);
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 body {
   margin: 0;
-  font-family: var(--kui-font);
-  background: var(--kui-bg);
-  color: var(--kui-fg);
+  font-family: var(--font-sans);
+  background: var(--background);
+  color: var(--foreground);
 }
 
 /* Skip link — hidden off-screen, visible on focus (WCAG 2.4.1) */
@@ -34,10 +42,10 @@ body {
   left: -9999px;
   z-index: 9999;
   padding: 0.75rem 1rem;
-  background: var(--kui-bg);
-  color: var(--kui-fg);
+  background: var(--background);
+  color: var(--foreground);
   text-decoration: none;
-  border: 2px solid var(--kui-focus-outline);
+  border: 2px solid var(--ring);
 }
 .skip-link:focus {
   left: 0;
@@ -84,6 +92,7 @@ input[type="checkbox"] {
   padding: 1rem;
 }
 
+/* Layout shell — Shadcn header/nav tokens */
 .app-layout {
   display: flex;
   flex-direction: column;
@@ -92,9 +101,10 @@ input[type="checkbox"] {
 
 .app-header {
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 0;
   margin-bottom: 1rem;
+  background: var(--background);
 }
 
 .app-nav {
@@ -107,7 +117,7 @@ input[type="checkbox"] {
   flex: 1;
 }
 
-/* VM list — grouped rows, status, relative-time */
+/* VM list — Shadcn card/list styling */
 .vm-list-container {
   max-width: 48rem;
 }
@@ -117,16 +127,16 @@ input[type="checkbox"] {
   font-weight: 600;
 }
 .vm-list__empty {
-  color: var(--kui-fg-muted);
+  color: var(--muted-foreground);
   margin: 1rem 0;
 }
 .vm-list__group-header {
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--kui-fg-muted);
+  color: var(--muted-foreground);
   margin: 1.25rem 0 0.5rem;
   padding-bottom: 0.25rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: 1px solid var(--border);
 }
 .vm-list__group-header:first-child {
   margin-top: 0;
@@ -142,7 +152,7 @@ input[type="checkbox"] {
   justify-content: space-between;
   gap: 1rem;
   padding: 0.6rem 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border);
 }
 .vm-list__row:last-child {
   border-bottom: none;
@@ -161,41 +171,41 @@ input[type="checkbox"] {
 .vm-list__status {
   font-size: 0.75rem;
   padding: 0.15rem 0.45rem;
-  border-radius: 4px;
+  border-radius: var(--radius);
   text-transform: lowercase;
 }
 .vm-list__status--running {
-  background: rgba(76, 175, 80, 0.25);
-  color: var(--kui-status-success);
+  background: color-mix(in srgb, var(--success) 25%, transparent);
+  color: var(--success);
 }
 .vm-list__status--paused {
-  background: rgba(255, 152, 0, 0.25);
-  color: var(--kui-status-warning);
+  background: color-mix(in srgb, var(--warning) 25%, transparent);
+  color: var(--warning);
 }
 .vm-list__status--shutoff,
 .vm-list__status--shutdown {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--kui-fg-muted);
+  background: var(--muted);
+  color: var(--muted-foreground);
 }
 .vm-list__status--blocked,
 .vm-list__status--crashed,
 .vm-list__status--dying,
 .vm-list__status--pmsuspended {
-  background: rgba(229, 115, 115, 0.25);
-  color: var(--kui-status-error);
+  background: color-mix(in srgb, var(--destructive) 25%, transparent);
+  color: var(--destructive);
 }
 .vm-list__badge--stuck {
   font-size: 0.7rem;
   padding: 0.1rem 0.35rem;
-  border-radius: 4px;
-  background: rgba(255, 152, 0, 0.3);
-  color: var(--kui-status-warning);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warning) 30%, transparent);
+  color: var(--warning);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 .vm-list__rel-time {
   font-size: 0.8rem;
-  color: var(--kui-fg-muted);
+  color: var(--muted-foreground);
 }
 .vm-list__row-actions {
   flex-shrink: 0;
@@ -203,42 +213,42 @@ input[type="checkbox"] {
 .vm-list__btn {
   padding: 0.3rem 0.6rem;
   font-size: 0.8rem;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: var(--kui-fg);
-  font-family: var(--kui-font);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-family: var(--font-sans);
   cursor: pointer;
 }
 .vm-list__btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--muted);
 }
 .vm-list__btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 .vm-list__btn--claim {
-  background: rgba(76, 175, 80, 0.2);
-  border-color: rgba(76, 175, 80, 0.4);
-  color: var(--kui-status-success);
+  background: color-mix(in srgb, var(--success) 20%, transparent);
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+  color: var(--success);
 }
 .vm-list__btn--claim:hover:not(:disabled) {
-  background: rgba(76, 175, 80, 0.3);
+  background: color-mix(in srgb, var(--success) 30%, transparent);
 }
 .vm-list__btn--recover {
-  background: rgba(255, 152, 0, 0.2);
-  border-color: rgba(255, 152, 0, 0.4);
-  color: var(--kui-status-warning);
+  background: color-mix(in srgb, var(--warning) 20%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+  color: var(--warning);
 }
 .vm-list__btn--recover:hover:not(:disabled) {
-  background: rgba(255, 152, 0, 0.3);
+  background: color-mix(in srgb, var(--warning) 30%, transparent);
 }
 
 /* Orphans — collapsible section */
 .vm-list-orphans {
   margin-top: 2rem;
   padding-top: 1.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid var(--border);
 }
 .vm-list-orphans__header {
   margin-bottom: 0.5rem;
@@ -265,20 +275,20 @@ input[type="checkbox"] {
   margin-bottom: 0.25rem;
 }
 .vm-list__btn--bulk-claim {
-  background: rgba(76, 175, 80, 0.2);
-  border-color: rgba(76, 175, 80, 0.4);
-  color: var(--kui-status-success);
+  background: color-mix(in srgb, var(--success) 20%, transparent);
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+  color: var(--success);
 }
 .vm-list__btn--bulk-claim:hover:not(:disabled) {
-  background: rgba(76, 175, 80, 0.3);
+  background: color-mix(in srgb, var(--success) 30%, transparent);
 }
 .vm-list__btn--bulk-destroy {
-  background: rgba(229, 115, 115, 0.2);
-  border-color: rgba(229, 115, 115, 0.4);
-  color: var(--kui-status-error);
+  background: color-mix(in srgb, var(--destructive) 20%, transparent);
+  border-color: color-mix(in srgb, var(--destructive) 40%, transparent);
+  color: var(--destructive);
 }
 .vm-list__btn--bulk-destroy:hover:not(:disabled) {
-  background: rgba(229, 115, 115, 0.3);
+  background: color-mix(in srgb, var(--destructive) 30%, transparent);
 }
 .vm-list-orphans__toggle {
   padding: 0.35rem 0;
@@ -286,13 +296,14 @@ input[type="checkbox"] {
   font-weight: 600;
   background: none;
   border: none;
-  color: var(--kui-fg);
-  font-family: var(--kui-font);
+  color: var(--foreground);
+  font-family: var(--font-sans);
   cursor: pointer;
   text-align: left;
 }
 .vm-list-orphans__toggle:hover {
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--foreground);
+  opacity: 0.9;
 }
 .vm-list-orphans__body--collapsed {
   display: none;
@@ -307,7 +318,7 @@ input[type="checkbox"] {
   align-items: center;
   gap: 1rem;
   padding: 0.5rem 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border);
 }
 .vm-list-orphans__item:last-child {
   border-bottom: none;
@@ -318,10 +329,11 @@ input[type="checkbox"] {
 }
 .vm-list-orphans__host {
   font-size: 0.8rem;
-  color: var(--kui-fg-muted);
+  color: var(--muted-foreground);
   flex-shrink: 0;
 }
 
+/* HostSelector — Shadcn select/input tokens */
 .host-selector {
   display: inline-flex;
   align-items: center;
@@ -337,16 +349,16 @@ input[type="checkbox"] {
 
 .host-selector__select {
   padding: 0.35rem 0.6rem;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: var(--kui-fg);
-  font-family: var(--kui-font);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-family: var(--font-sans);
   cursor: pointer;
 }
 
 .host-selector__select:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--muted);
 }
 
 .host-selector__select:disabled {
@@ -354,6 +366,7 @@ input[type="checkbox"] {
   cursor: not-allowed;
 }
 
+/* InlineHostSelector — same Shadcn select tokens */
 .inline-host-selector {
   display: inline-flex;
   align-items: center;
@@ -369,16 +382,25 @@ input[type="checkbox"] {
 
 .inline-host-selector__select {
   padding: 0.35rem 0.6rem;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: var(--kui-fg);
-  font-family: var(--kui-font);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-family: var(--font-sans);
   cursor: pointer;
 }
 
+.inline-host-selector__select:hover:not(:disabled) {
+  background: var(--muted);
+}
+
+/* First-run checklist — Shadcn card + button styling */
 .first-run-checklist {
   max-width: 28rem;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
 }
 .first-run-checklist h1 {
   margin-top: 0;
@@ -395,10 +417,15 @@ input[type="checkbox"] {
 .first-run-checklist button {
   margin-top: 0;
   padding: 0.4rem 0.8rem;
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-family: var(--font-sans);
   cursor: pointer;
 }
 
-/* Modal overlay and dialog */
+/* Modal overlay and dialog — Shadcn dialog tokens */
 #modal-root {
   position: fixed;
   inset: 0;
@@ -418,15 +445,19 @@ input[type="checkbox"] {
   padding: 1rem;
   z-index: 3001;
 }
-.modal {
-  background: var(--kui-bg);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  max-width: 28rem;
+/* Shared dialog panel (modal + shortcut-help) */
+.modal,
+.shortcut-help-panel {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   width: 100%;
+}
+.modal {
+  max-width: 28rem;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 .modal--wide {
   max-width: 48rem;
@@ -437,37 +468,42 @@ input[type="checkbox"] {
   padding: 0.5rem;
   font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace;
   font-size: 0.85rem;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: var(--kui-fg);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
   resize: vertical;
 }
 .modal__textarea:focus {
-  outline: 2px solid var(--kui-focus-outline);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
-.modal__header {
+/* Shared dialog header/close */
+.modal__header,
+.shortcut-help__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.25rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--border);
 }
-.modal__header h2 {
+.modal__header h2,
+.shortcut-help__header h2 {
   margin: 0;
   font-size: 1.1rem;
 }
-.modal__close {
+.modal__close,
+.shortcut-help__close {
   background: none;
   border: none;
-  color: var(--kui-fg);
+  color: var(--foreground);
   font-size: 1.5rem;
   cursor: pointer;
   padding: 0 0.25rem;
   line-height: 1;
 }
-.modal__close:hover {
+.modal__close:hover,
+.shortcut-help__close:hover {
   opacity: 0.8;
 }
 .modal__form {
@@ -488,11 +524,11 @@ input[type="checkbox"] {
 .modal__label input,
 .modal__label select {
   padding: 0.4rem 0.5rem;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: var(--kui-fg);
-  font-family: var(--kui-font);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-family: var(--font-sans);
 }
 .modal__label input[type="radio"] {
   width: auto;
@@ -500,16 +536,16 @@ input[type="checkbox"] {
 }
 .modal__readonly {
   font-size: 0.9rem;
-  color: var(--kui-fg-muted);
+  color: var(--muted-foreground);
 }
 .modal__hint {
   margin: 0.25rem 0 0;
   font-size: 0.9rem;
-  color: var(--kui-fg-muted);
+  color: var(--muted-foreground);
 }
 
 .modal__error {
-  color: var(--kui-status-error);
+  color: var(--destructive);
   margin-bottom: 0.5rem;
   font-size: 0.9rem;
 }
@@ -520,24 +556,24 @@ input[type="checkbox"] {
   gap: 0.5rem;
   margin-top: 1.25rem;
   padding-top: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--border);
 }
 .modal__footer button {
   padding: 0.4rem 0.8rem;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: var(--kui-fg);
-  font-family: var(--kui-font);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-family: var(--font-sans);
   cursor: pointer;
 }
 .modal__footer button[type="submit"] {
-  background: rgba(76, 175, 80, 0.25);
-  border-color: rgba(76, 175, 80, 0.4);
-  color: var(--kui-status-success);
+  background: color-mix(in srgb, var(--success) 25%, transparent);
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+  color: var(--success);
 }
 .modal__footer button[type="submit"]:hover:not(:disabled) {
-  background: rgba(76, 175, 80, 0.35);
+  background: color-mix(in srgb, var(--success) 35%, transparent);
 }
 .modal__footer button[type="submit"]:disabled {
   opacity: 0.6;
@@ -548,14 +584,15 @@ input[type="checkbox"] {
   margin-bottom: 1rem;
 }
 .vm-list__btn--create {
-  background: rgba(76, 175, 80, 0.2);
-  border-color: rgba(76, 175, 80, 0.4);
-  color: var(--kui-status-success);
+  background: color-mix(in srgb, var(--success) 20%, transparent);
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+  color: var(--success);
 }
 .vm-list__btn--create:hover {
-  background: rgba(76, 175, 80, 0.3);
+  background: color-mix(in srgb, var(--success) 30%, transparent);
 }
 
+/* Login form — Shadcn form/input/button tokens */
 .login-form {
   max-width: 20rem;
 }
@@ -567,28 +604,39 @@ input[type="checkbox"] {
   display: block;
   width: 100%;
   margin-top: 0.2rem;
-  padding: 0.4rem;
+  padding: 0.4rem 0.5rem;
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-family: var(--font-sans);
 }
 .login-form button {
   margin-top: 0.5rem;
   padding: 0.4rem 0.8rem;
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-family: var(--font-sans);
   cursor: pointer;
 }
 .login-error {
-  color: var(--kui-status-error);
+  color: var(--destructive);
   margin-top: 0.5rem;
   min-height: 1.2em;
 }
 
-/* Setup wizard */
+/* Setup wizard — Shadcn form/fieldset tokens */
 .setup-hosts {
   margin: 0.5rem 0;
 }
 .setup-host-row {
   margin-bottom: 1rem;
   padding: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
 }
 .setup-host-row label {
   display: block;
@@ -603,6 +651,12 @@ input[type="checkbox"] {
   margin-right: 0.5rem;
   padding: 0.35rem 0.6rem;
   font-size: 0.9rem;
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  cursor: pointer;
 }
 .setup-validate-result {
   display: inline-block;
@@ -611,10 +665,10 @@ input[type="checkbox"] {
   min-height: 1.2em;
 }
 .setup-validate-result--success {
-  color: var(--kui-status-success);
+  color: var(--success);
 }
 .setup-validate-result--error {
-  color: var(--kui-status-error);
+  color: var(--destructive);
 }
 .setup-default-host {
   margin-top: 1rem;
@@ -625,27 +679,27 @@ input[type="checkbox"] {
 }
 
 .error {
-  color: var(--kui-status-error);
+  color: var(--destructive);
 }
 
-/* Alerts toggle and wrapper */
+/* Alerts toggle — Shadcn button tokens */
 .alerts-toggle {
   padding: 0.35rem 0.6rem;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: var(--kui-fg);
-  font-family: var(--kui-font);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-family: var(--font-sans);
   cursor: pointer;
 }
 .alerts-toggle:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--muted);
 }
 .alerts-panel-wrapper--hidden .alerts-panel {
   display: none;
 }
 
-/* Alerts panel — collapsible sidebar */
+/* Alerts panel — Shadcn sidebar/panel styling */
 .alerts-panel {
   position: fixed;
   top: 0;
@@ -653,8 +707,8 @@ input[type="checkbox"] {
   width: 20rem;
   max-width: 90vw;
   max-height: 100vh;
-  background: rgba(30, 30, 30, 0.98);
-  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--background);
+  border-left: 1px solid var(--border);
   box-shadow: -4px 0 12px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
@@ -665,7 +719,7 @@ input[type="checkbox"] {
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 .alerts-panel__title {
@@ -676,14 +730,15 @@ input[type="checkbox"] {
 .alerts-panel__clear {
   padding: 0.25rem 0.5rem;
   font-size: 0.8rem;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: var(--kui-fg);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-family: var(--font-sans);
   cursor: pointer;
 }
 .alerts-panel__clear:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--muted);
 }
 .alerts-panel__clear:disabled {
   opacity: 0.5;
@@ -698,7 +753,7 @@ input[type="checkbox"] {
 }
 .alerts-panel__item {
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border);
 }
 .alerts-panel__item--host_offline,
 .alerts-panel__item--vm_state_failure,
@@ -706,11 +761,11 @@ input[type="checkbox"] {
 .alerts-panel__item--clone_failure,
 .alerts-panel__item--console_failure,
 .alerts-panel__item--api_error {
-  border-left: 3px solid var(--kui-status-error);
+  border-left: 3px solid var(--destructive);
 }
 .alerts-panel__item--host_online,
 .alerts-panel__item--vm_state_changed {
-  border-left: 3px solid var(--kui-status-success);
+  border-left: 3px solid var(--success);
 }
 .alerts-panel__row {
   display: flex;
@@ -722,7 +777,7 @@ input[type="checkbox"] {
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--kui-fg-muted);
+  color: var(--muted-foreground);
 }
 .alerts-panel__message {
   flex: 1;
@@ -731,19 +786,20 @@ input[type="checkbox"] {
 }
 .alerts-panel__time {
   font-size: 0.75rem;
-  color: var(--kui-fg-muted);
+  color: var(--muted-foreground);
 }
 .alerts-panel__dismiss {
   padding: 0.2rem 0.4rem;
   font-size: 0.75rem;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: var(--kui-fg);
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-family: var(--font-sans);
   cursor: pointer;
 }
 .alerts-panel__dismiss:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--muted);
 }
 .alerts-panel__details-row {
   margin-top: 0.5rem;
@@ -753,7 +809,8 @@ input[type="checkbox"] {
   font-size: 0.8rem;
   background: none;
   border: none;
-  color: var(--kui-status-success);
+  color: var(--success);
+  font-family: var(--font-sans);
   cursor: pointer;
   text-decoration: underline;
 }
@@ -761,8 +818,8 @@ input[type="checkbox"] {
   margin: 0.5rem 0 0;
   padding: 0.5rem;
   font-size: 0.75rem;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 4px;
+  background: var(--muted);
+  border-radius: var(--radius);
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;
@@ -771,7 +828,7 @@ input[type="checkbox"] {
   display: none;
 }
 
-/* Shortcut help overlay — above modals */
+/* Shortcut help overlay — Shadcn dialog styling */
 #shortcut-help-root {
   position: fixed;
   inset: 0;
@@ -791,35 +848,7 @@ input[type="checkbox"] {
   padding: 1rem;
 }
 .shortcut-help-panel {
-  background: var(--kui-bg);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
   max-width: 24rem;
-  width: 100%;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-}
-.shortcut-help__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-.shortcut-help__header h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-.shortcut-help__close {
-  background: none;
-  border: none;
-  color: var(--kui-fg);
-  font-size: 1.5rem;
-  cursor: pointer;
-  padding: 0 0.25rem;
-  line-height: 1;
-}
-.shortcut-help__close:hover {
-  opacity: 0.8;
 }
 .shortcut-help__list {
   margin: 0;
@@ -837,10 +866,10 @@ input[type="checkbox"] {
 .shortcut-help__desc {
   margin: 0;
   font-size: 0.9rem;
-  color: var(--kui-fg-muted);
+  color: var(--muted-foreground);
 }
 
-/* Toast — top-right corner */
+/* Toast — Shadcn toast styling, top-right corner */
 .toast-container {
   position: fixed;
   top: 1rem;
@@ -856,8 +885,9 @@ input[type="checkbox"] {
 }
 .toast {
   padding: 0.6rem 1rem;
-  border-radius: 6px;
+  border-radius: var(--radius);
   font-size: 0.9rem;
+  border: 1px solid var(--border);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   animation: toast-in 0.2s ease-out;
   cursor: pointer;
@@ -866,16 +896,18 @@ input[type="checkbox"] {
   animation: toast-out 0.2s ease-out forwards;
 }
 .toast--info {
-  background: rgba(33, 150, 243, 0.9);
-  color: #fff;
+  background: var(--background);
+  color: var(--foreground);
 }
 .toast--success {
-  background: rgba(76, 175, 80, 0.9);
-  color: #fff;
+  background: color-mix(in srgb, var(--success) 15%, var(--background));
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+  color: var(--foreground);
 }
 .toast--warn {
-  background: rgba(255, 152, 0, 0.9);
-  color: #1a1a1a;
+  background: color-mix(in srgb, var(--warning) 15%, var(--background));
+  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+  color: var(--foreground);
 }
 @keyframes toast-in {
   from {

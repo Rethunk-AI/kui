@@ -3627,13 +3627,22 @@ func (r *routerState) setupComplete() http.HandlerFunc {
 			writeJSONError(w, http.StatusConflict, "setup already complete")
 			return
 		}
-		if r.configPresent {
-			writeJSONError(w, http.StatusConflict, "setup already complete")
+		// Block only when setup is fully complete (config + db + admin).
+		// Allow completion when setup_required (e.g. no_admin) even if config exists.
+		if r.db == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "database not available; cannot complete setup")
 			return
 		}
-		if _, statErr := os.Stat(r.configPath); statErr == nil {
-			writeJSONError(w, http.StatusConflict, "setup already complete")
-			return
+		if r.configPresent && r.config != nil {
+			hasAdmin, err := r.hasAdminUser(req.Context())
+			if err != nil {
+				writeJSONError(w, http.StatusInternalServerError, "failed to evaluate setup status")
+				return
+			}
+			if hasAdmin {
+				writeJSONError(w, http.StatusConflict, "setup already complete")
+				return
+			}
 		}
 
 		passwordHash, err := bcrypt.GenerateFromPassword([]byte(payload.Admin.Password), bcrypt.DefaultCost)

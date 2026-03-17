@@ -4092,6 +4092,135 @@ func TestSetupComplete_RejectsHostWithNoNetworks(t *testing.T) {
 	}
 }
 
+func TestSetupComplete_SucceedsWhenConfigExistsButNoAdmin(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+db:
+  path: ` + filepath.Join(tempDir, "kui.db") + `
+git:
+  path: ` + tempDir + `
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	// No admin user — setup_required (no_admin). setupComplete must succeed.
+	mock := &mockConnector{
+		pools:    []libvirtconn.StoragePoolInfo{{Name: "default", UUID: "p1", Active: true}},
+		networks: []libvirtconn.NetworkInfo{{Name: "default", UUID: "n1", Active: true}},
+	}
+	handler := NewRouter(RouterOptions{
+		Logger:           nil,
+		DB:               database,
+		Config:           loaded,
+		ConfigPath:       configPath,
+		ConfigPresent:    true,
+		DBPath:           loaded.DB.Path,
+		GitPath:           loaded.Git.Path,
+		SetupConnectFunc: func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) { return mock, nil },
+	})
+
+	payload := map[string]any{
+		"admin":        map[string]string{"username": "admin", "password": "secret123"},
+		"hosts":        []map[string]string{{"id": "local", "uri": "qemu:///system", "keyfile": ""}},
+		"default_host": "local",
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/complete", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 when config exists but no admin, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSetupComplete_RejectsWhenAdminExists(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+db:
+  path: ` + filepath.Join(tempDir, "kui.db") + `
+git:
+  path: ` + tempDir + `
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	hash, _ := bcrypt.GenerateFromPassword([]byte("x"), bcrypt.DefaultCost)
+	_, err = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("insert admin: %v", err)
+	}
+
+	mock := &mockConnector{
+		pools:    []libvirtconn.StoragePoolInfo{{Name: "default", UUID: "p1", Active: true}},
+		networks: []libvirtconn.NetworkInfo{{Name: "default", UUID: "n1", Active: true}},
+	}
+	handler := NewRouter(RouterOptions{
+		Logger:           nil,
+		DB:               database,
+		Config:           loaded,
+		ConfigPath:       configPath,
+		ConfigPresent:    true,
+		DBPath:           loaded.DB.Path,
+		GitPath:           loaded.Git.Path,
+		SetupConnectFunc: func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) { return mock, nil },
+	})
+
+	payload := map[string]any{
+		"admin":        map[string]string{"username": "admin2", "password": "secret123"},
+		"hosts":        []map[string]string{{"id": "local", "uri": "qemu:///system", "keyfile": ""}},
+		"default_host": "local",
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/complete", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 when admin exists, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "setup already complete") {
+		t.Errorf("expected body to contain 'setup already complete', got %s", rec.Body.String())
+	}
+}
+
 // --- patchVMConfig error paths ---
 
 func TestPatchVMConfig_BadJSON(t *testing.T) {

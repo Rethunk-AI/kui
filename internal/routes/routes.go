@@ -274,13 +274,14 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Use(mw.CORS(allowedOrigins))
 	router.Use(mw.Recovery(logger))
 	router.Use(mw.Auth(secret, mw.AuthOptions{
-		SkipExactPaths: []string{"/", "/api/auth/login"},
+		SkipExactPaths: []string{"/", "/api/auth/login", "/api/health"},
 		SkipPrefixPaths: []string{
 			"/api/setup/",
 			"/assets/",
 		},
 	}))
 
+	router.Get("/api/health", state.health())
 	router.Post("/api/auth/login", state.login(sessionTimeout, secret, secureCookies))
 	router.Get("/api/setup/status", state.setupStatus())
 	router.Post("/api/setup/validate-host", state.validateHost())
@@ -3128,6 +3129,12 @@ func (r *routerState) getHostNetworks() http.HandlerFunc {
 			out = append(out, networkResponse{Name: n.Name, UUID: n.UUID, Active: n.Active})
 		}
 		writeJSON(w, http.StatusOK, out)
+	}
+}
+
+func (r *routerState) health() http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
 }
 

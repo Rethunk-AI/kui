@@ -180,6 +180,43 @@ type flushRecorder struct {
 
 func (f *flushRecorder) Flush() {}
 
+func TestHealth_Returns200(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        nil,
+		ConfigPath:    filepath.Join(tempDir, "nonexistent.yaml"),
+		ConfigPresent: false,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Status != "ok" {
+		t.Fatalf("expected status=ok, got %q", body.Status)
+	}
+}
+
 func TestSetupStatus_ConfigMissing(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()

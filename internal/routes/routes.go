@@ -38,28 +38,34 @@ import (
 	"github.com/kui/kui/web"
 )
 
+// ConnectorProvider returns a libvirt connector for the given host. When nil, the router
+// uses the default implementation (libvirtconn.Connect). Inject a mock in tests.
+type ConnectorProvider func(ctx context.Context, hostID string) (libvirtconn.Connector, error)
+
 type RouterOptions struct {
-	Logger        *slog.Logger
-	DB            *db.DB
-	Config        *config.Config
-	ConfigPath    string
-	ConfigPresent bool
-	DBPath        string
-	GitPath       string
-	Broadcaster   *broadcaster.Broadcaster
+	Logger            *slog.Logger
+	DB                *db.DB
+	Config            *config.Config
+	ConfigPath        string
+	ConfigPresent     bool
+	DBPath            string
+	GitPath           string
+	Broadcaster       *broadcaster.Broadcaster
+	ConnectorProvider ConnectorProvider
 }
 
 type routerState struct {
-	logger          *slog.Logger
-	db              *db.DB
-	config          *config.Config
-	configPath      string
-	configPresent   bool
-	dbPath          string
-	gitPath         string
-	broadcaster     *broadcaster.Broadcaster
-	setupCompleted  bool
-	setupCompletedMu sync.Mutex
+	logger             *slog.Logger
+	db                 *db.DB
+	config             *config.Config
+	configPath         string
+	configPresent      bool
+	dbPath             string
+	gitPath            string
+	broadcaster        *broadcaster.Broadcaster
+	connectorProvider  ConnectorProvider
+	setupCompleted     bool
+	setupCompletedMu   sync.Mutex
 }
 
 type setupStatusResponse struct {
@@ -179,14 +185,15 @@ func NewRouter(opts RouterOptions) http.Handler {
 		bc = broadcaster.NewBroadcaster()
 	}
 	state := &routerState{
-		logger:         logger,
-		db:             opts.DB,
-		config:         opts.Config,
-		configPath:     opts.ConfigPath,
-		configPresent:  opts.ConfigPresent,
-		dbPath:         opts.DBPath,
-		gitPath:        opts.GitPath,
-		broadcaster:    bc,
+		logger:            logger,
+		db:                opts.DB,
+		config:            opts.Config,
+		configPath:        opts.ConfigPath,
+		configPresent:     opts.ConfigPresent,
+		dbPath:            opts.DBPath,
+		gitPath:           opts.GitPath,
+		broadcaster:       bc,
+		connectorProvider: opts.ConnectorProvider,
 	}
 
 	sessionTimeout := 24 * time.Hour
@@ -2124,6 +2131,9 @@ type networkResponse struct {
 }
 
 func (r *routerState) getConnectorForHost(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+	if r.connectorProvider != nil {
+		return r.connectorProvider(ctx, hostID)
+	}
 	if r.config == nil || len(r.config.Hosts) == 0 {
 		return nil, errors.New("no hosts configured")
 	}

@@ -297,3 +297,144 @@ git:
 		t.Fatalf("expected listener to exist")
 	}
 }
+
+func TestParseFlags_InvalidFlag(t *testing.T) {
+	t.Parallel()
+	_, err := parseFlags([]string{"--listen", "127.0.0.1:0", "--unknown-flag"})
+	if err == nil {
+		t.Fatal("expected error for unknown flag")
+	}
+}
+
+func TestParseFlags_EmptyListen(t *testing.T) {
+	t.Parallel()
+	_ = os.Unsetenv("KUI_LISTEN")
+
+	_, err := parseFlags([]string{"--listen", ""})
+	if err == nil {
+		t.Fatal("expected error for empty listen")
+	}
+	if !strings.Contains(err.Error(), "listen address") {
+		t.Errorf("expected listen address error, got %v", err)
+	}
+}
+
+func TestParseFlags_TLSPairRequired(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseFlags([]string{"--listen", "127.0.0.1:0", "--tls-cert", "/cert.pem"})
+	if err == nil {
+		t.Fatal("expected error for tls-cert without tls-key")
+	}
+	if !strings.Contains(err.Error(), "tls-cert") {
+		t.Errorf("expected tls pair error, got %v", err)
+	}
+
+	_, err = parseFlags([]string{"--listen", "127.0.0.1:0", "--tls-key", "/key.pem"})
+	if err == nil {
+		t.Fatal("expected error for tls-key without tls-cert")
+	}
+}
+
+func TestParseFlags_EnvOverrides(t *testing.T) {
+	t.Cleanup(func() {
+		os.Unsetenv("KUI_CONFIG")
+		os.Unsetenv("KUI_LISTEN")
+	})
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	configContent := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "0123456789abcdef0123456789abcdef"
+`)
+	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	os.Setenv("KUI_CONFIG", configPath)
+	os.Setenv("KUI_LISTEN", "127.0.0.1:0")
+
+	opts, err := parseFlags([]string{})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+	if opts.configPath != configPath {
+		t.Errorf("configPath = %q, want %q", opts.configPath, configPath)
+	}
+	if opts.listen != "127.0.0.1:0" {
+		t.Errorf("listen = %q, want 127.0.0.1:0", opts.listen)
+	}
+	if opts.configSource != "env" {
+		t.Errorf("configSource = %q, want env", opts.configSource)
+	}
+}
+
+func TestParseFlags_ConfigFlagOverridesEnv(t *testing.T) {
+	t.Cleanup(func() {
+		os.Unsetenv("KUI_CONFIG")
+	})
+
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	configContent := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "0123456789abcdef0123456789abcdef"
+`)
+	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	os.Setenv("KUI_CONFIG", "/other/path")
+
+	opts, err := parseFlags([]string{"--config", configPath, "--listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+	if opts.configPath != configPath {
+		t.Errorf("configPath = %q, want flag value %q", opts.configPath, configPath)
+	}
+	if opts.configSource != "--config" {
+		t.Errorf("configSource = %q, want --config", opts.configSource)
+	}
+}
+
+func TestBuildApplication_DBOpenFailureInSetupMode(t *testing.T) {
+	t.Cleanup(func() { os.Unsetenv("KUI_DB_PATH") })
+
+	// Use a path that is a directory (not a file) - sqlite Open will fail
+	tempDir := t.TempDir()
+	os.Setenv("KUI_DB_PATH", tempDir)
+
+	opts, err := parseFlags([]string{"--config", filepath.Join(tempDir, "nonexistent.yaml"), "--listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+
+	_, err = buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err == nil {
+		t.Fatal("expected error when db open fails in setup mode")
+	}
+	if !strings.Contains(err.Error(), "open db") && !strings.Contains(err.Error(), "database") {
+		t.Errorf("expected db open error, got %v", err)
+	}
+}
+
+func TestCloseDatabase_Nil(t *testing.T) {
+	t.Parallel()
+	if err := closeDatabase(nil); err != nil {
+		t.Errorf("closeDatabase(nil) should return nil, got %v", err)
+	}
+}
+
+func TestGetFileStatError(t *testing.T) {
+	t.Parallel()
+	if err := getFileStatError("/nonexistent/path/xyz"); err == nil {
+		t.Error("getFileStatError(nonexistent) should return error")
+	}
+	tempDir := t.TempDir()
+	if err := getFileStatError(tempDir); err != nil {
+		t.Errorf("getFileStatError(existing) = %v", err)
+	}
+}

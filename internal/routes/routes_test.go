@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,9 +18,142 @@ import (
 
 	"github.com/kui/kui/internal/config"
 	"github.com/kui/kui/internal/db"
+	"github.com/kui/kui/internal/libvirtconn"
 )
 
 const testJWTSecret = "0123456789abcdef0123456789abcdef"
+
+// mockConnector implements libvirtconn.Connector for handler tests.
+type mockConnector struct {
+	listDomainsErr   error
+	domains          []libvirtconn.DomainInfo
+	lookupErr        error
+	domainInfo       libvirtconn.DomainInfo
+	listPoolsErr     error
+	pools            []libvirtconn.StoragePoolInfo
+	listVolumesErr   error
+	volumes          []libvirtconn.StorageVolumeInfo
+	listNetworksErr  error
+	networks         []libvirtconn.NetworkInfo
+	getStateErr      error
+	state            libvirtconn.DomainLifecycleState
+	getDomainXMLErr  error
+	domainXML        string
+	validatePoolErr  error
+	validateVolErr   error
+	createVolErr     error
+	volInfo          libvirtconn.StorageVolumeInfo
+	defineXMLErr     error
+	createErr        error
+	shutdownErr      error
+	destroyErr       error
+	undefineErr      error
+	suspendErr       error
+	resumeErr        error
+	cloneVolErr      error
+	copyVolErr       error
+	createVolBytesErr error
+}
+
+func (m *mockConnector) Close() error { return nil }
+
+func (m *mockConnector) ListDomains(ctx context.Context) ([]libvirtconn.DomainInfo, error) {
+	if m.listDomainsErr != nil {
+		return nil, m.listDomainsErr
+	}
+	return m.domains, nil
+}
+
+func (m *mockConnector) LookupByUUID(ctx context.Context, uuid string) (libvirtconn.DomainInfo, error) {
+	if m.lookupErr != nil {
+		return libvirtconn.DomainInfo{}, m.lookupErr
+	}
+	return m.domainInfo, nil
+}
+
+func (m *mockConnector) GetDomainXML(ctx context.Context, uuid string) (string, error) {
+	if m.getDomainXMLErr != nil {
+		return "", m.getDomainXMLErr
+	}
+	return m.domainXML, nil
+}
+
+func (m *mockConnector) DefineXML(ctx context.Context, xmlConfig string) (libvirtconn.DomainInfo, error) {
+	if m.defineXMLErr != nil {
+		return libvirtconn.DomainInfo{}, m.defineXMLErr
+	}
+	return m.domainInfo, nil
+}
+
+func (m *mockConnector) Create(ctx context.Context, uuid string) error   { return m.createErr }
+func (m *mockConnector) Shutdown(ctx context.Context, uuid string) error { return m.shutdownErr }
+func (m *mockConnector) Destroy(ctx context.Context, uuid string) error { return m.destroyErr }
+func (m *mockConnector) Undefine(ctx context.Context, uuid string) error { return m.undefineErr }
+func (m *mockConnector) Suspend(ctx context.Context, uuid string) error { return m.suspendErr }
+func (m *mockConnector) Resume(ctx context.Context, uuid string) error  { return m.resumeErr }
+
+func (m *mockConnector) GetState(ctx context.Context, uuid string) (libvirtconn.DomainLifecycleState, error) {
+	if m.getStateErr != nil {
+		return "", m.getStateErr
+	}
+	return m.state, nil
+}
+
+func (m *mockConnector) ListNetworks(ctx context.Context) ([]libvirtconn.NetworkInfo, error) {
+	if m.listNetworksErr != nil {
+		return nil, m.listNetworksErr
+	}
+	return m.networks, nil
+}
+
+func (m *mockConnector) ListPools(ctx context.Context) ([]libvirtconn.StoragePoolInfo, error) {
+	if m.listPoolsErr != nil {
+		return nil, m.listPoolsErr
+	}
+	return m.pools, nil
+}
+
+func (m *mockConnector) ListVolumes(ctx context.Context, pool string) ([]libvirtconn.StorageVolumeInfo, error) {
+	if m.listVolumesErr != nil {
+		return nil, m.listVolumesErr
+	}
+	return m.volumes, nil
+}
+
+func (m *mockConnector) ValidatePool(ctx context.Context, pool string) error   { return m.validatePoolErr }
+func (m *mockConnector) ValidatePath(ctx context.Context, pool, path string) error { return nil }
+func (m *mockConnector) ValidateVolume(ctx context.Context, pool, name string) error {
+	return m.validateVolErr
+}
+
+func (m *mockConnector) CreateVolumeFromXML(ctx context.Context, pool, xml string) (libvirtconn.StorageVolumeInfo, error) {
+	if m.createVolErr != nil {
+		return libvirtconn.StorageVolumeInfo{}, m.createVolErr
+	}
+	return m.volInfo, nil
+}
+
+func (m *mockConnector) CloneVolume(ctx context.Context, pool, sourceName, targetName string) error {
+	return m.cloneVolErr
+}
+
+func (m *mockConnector) CopyVolume(ctx context.Context, pool, volumeName string) ([]byte, error) {
+	if m.copyVolErr != nil {
+		return nil, m.copyVolErr
+	}
+	return []byte{}, nil
+}
+
+func (m *mockConnector) CreateVolumeFromBytes(ctx context.Context, pool, name string, data []byte, format string) (libvirtconn.StorageVolumeInfo, error) {
+	if m.createVolBytesErr != nil {
+		return libvirtconn.StorageVolumeInfo{}, m.createVolBytesErr
+	}
+	return m.volInfo, nil
+}
+
+func (m *mockConnector) OpenSerialConsole(ctx context.Context, uuid string) (io.ReadWriteCloser, error) {
+	return nil, errors.New("not implemented")
+}
 
 // flushRecorder wraps ResponseRecorder to implement http.Flusher for SSE tests.
 type flushRecorder struct {
@@ -847,5 +982,567 @@ func TestVNCPortFromDomainXML(t *testing.T) {
 				t.Errorf("got port %d, want %d", port, tt.wantPort)
 			}
 		})
+	}
+}
+
+func TestStaticHandler_NilFS(t *testing.T) {
+	t.Parallel()
+	handler := staticHandler(nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503, got %d", rec.Code)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "web assets not available") {
+		t.Errorf("expected 'web assets not available' in body, got %q", body)
+	}
+}
+
+func TestExtractFirstDiskPath(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		xml  string
+		want string
+	}{
+		{"no disk", `<domain><name>vm</name></domain>`, ""},
+		{"disk with file", `<domain><devices><disk><source file="/var/lib/libvirt/images/disk.qcow2"/></disk></devices></domain>`, "/var/lib/libvirt/images/disk.qcow2"},
+		{"disk with single quotes", `<domain><devices><disk><source file='/path/to/disk.qcow2'/></disk></devices></domain>`, "/path/to/disk.qcow2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractFirstDiskPath(tt.xml)
+			if got != tt.want {
+				t.Errorf("extractFirstDiskPath = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeHosts(t *testing.T) {
+	t.Parallel()
+	valid := []struct {
+		ID      string `json:"id"`
+		URI     string `json:"uri"`
+		Keyfile string `json:"keyfile"`
+	}{
+		{ID: "a", URI: "qemu:///system", Keyfile: ""},
+		{ID: "b", URI: "qemu+ssh://host/system", Keyfile: "/key"},
+	}
+	hosts, ok := normalizeHosts(valid)
+	if !ok || len(hosts) != 2 {
+		t.Fatalf("normalizeHosts(valid) = %v, %v; want ok=true, len=2", hosts, ok)
+	}
+	if hosts[0].ID != "a" || hosts[1].ID != "b" {
+		t.Errorf("unexpected hosts: %+v", hosts)
+	}
+
+	emptyID := []struct {
+		ID      string `json:"id"`
+		URI     string `json:"uri"`
+		Keyfile string `json:"keyfile"`
+	}{{ID: "", URI: "qemu:///system", Keyfile: ""}}
+	if _, ok := normalizeHosts(emptyID); ok {
+		t.Error("normalizeHosts(empty id) should fail")
+	}
+
+	emptyURI := []struct {
+		ID      string `json:"id"`
+		URI     string `json:"uri"`
+		Keyfile string `json:"keyfile"`
+	}{{ID: "a", URI: "", Keyfile: ""}}
+	if _, ok := normalizeHosts(emptyURI); ok {
+		t.Error("normalizeHosts(empty uri) should fail")
+	}
+
+	dupID := []struct {
+		ID      string `json:"id"`
+		URI     string `json:"uri"`
+		Keyfile string `json:"keyfile"`
+	}{
+		{ID: "a", URI: "qemu:///system", Keyfile: ""},
+		{ID: "a", URI: "qemu:///session", Keyfile: ""},
+	}
+	if _, ok := normalizeHosts(dupID); ok {
+		t.Error("normalizeHosts(duplicate id) should fail")
+	}
+
+	qemuSSHNoKeyfile := []struct {
+		ID      string `json:"id"`
+		URI     string `json:"uri"`
+		Keyfile string `json:"keyfile"`
+	}{{ID: "a", URI: "qemu+ssh://host/system", Keyfile: ""}}
+	if _, ok := normalizeHosts(qemuSSHNoKeyfile); ok {
+		t.Error("normalizeHosts(qemu+ssh without keyfile) should fail")
+	}
+}
+
+func TestContainsHost(t *testing.T) {
+	t.Parallel()
+	hosts := []config.Host{
+		{ID: "a", URI: "qemu:///system"},
+		{ID: "b", URI: "qemu:///session"},
+	}
+	if !containsHost(hosts, "a") {
+		t.Error("containsHost(hosts, 'a') = false, want true")
+	}
+	if containsHost(hosts, "c") {
+		t.Error("containsHost(hosts, 'c') = true, want false")
+	}
+}
+
+func TestClientIPFromRequest(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		req  *http.Request
+		want string
+	}{
+		{"X-Real-IP", httptest.NewRequest(http.MethodGet, "/", nil), ""},
+		{"RemoteAddr", httptest.NewRequest(http.MethodGet, "/", nil), ""},
+	}
+	// Set headers/RemoteAddr after creation
+	req1 := httptest.NewRequest(http.MethodGet, "/", nil)
+	req1.Header.Set("X-Real-IP", "192.168.1.1")
+	if got := clientIPFromRequest(req1); got != "192.168.1.1" {
+		t.Errorf("X-Real-IP: got %q, want 192.168.1.1", got)
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/", nil)
+	req2.Header.Set("X-Forwarded-For", "10.0.0.1, 10.0.0.2")
+	if got := clientIPFromRequest(req2); got != "10.0.0.1" {
+		t.Errorf("X-Forwarded-For: got %q, want 10.0.0.1", got)
+	}
+
+	req3 := httptest.NewRequest(http.MethodGet, "/", nil)
+	req3.RemoteAddr = "172.16.0.1:12345"
+	if got := clientIPFromRequest(req3); got != "172.16.0.1" {
+		t.Errorf("RemoteAddr: got %q, want 172.16.0.1", got)
+	}
+	_ = tests
+}
+
+func TestWriteConfigFile(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	path := filepath.Join(tempDir, "subdir", "config.yaml")
+	payload := map[string]string{"key": "value"}
+	if err := writeConfigFile(path, payload); err != nil {
+		t.Fatalf("writeConfigFile: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(data), "key") || !strings.Contains(string(data), "value") {
+		t.Errorf("unexpected content: %s", data)
+	}
+}
+
+func TestSanitizeValidationError_Truncates(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("x", 300)
+	got := sanitizeValidationError(long)
+	if len(got) > 256 {
+		t.Errorf("sanitizeValidationError should truncate to 256, got len %d", len(got))
+	}
+}
+
+// authHandler returns a router with mock ConnectorProvider and a helper to get a valid token.
+func authHandler(t *testing.T, connectorProvider ConnectorProvider) (http.Handler, string) {
+	t.Helper()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, err = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	opts := RouterOptions{
+		Logger:            nil,
+		DB:                database,
+		Config:            loaded,
+		ConfigPath:        configPath,
+		ConfigPresent:     true,
+		DBPath:            filepath.Join(tempDir, "kui.db"),
+		GitPath:           tempDir,
+		ConnectorProvider: connectorProvider,
+	}
+	handler := NewRouter(opts)
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login: %d %s", loginRec.Code, loginRec.Body.String())
+	}
+	var loginResp struct{ Token string }
+	if err := json.NewDecoder(loginRec.Body).Decode(&loginResp); err != nil {
+		t.Fatalf("decode login: %v", err)
+	}
+	return handler, loginResp.Token
+}
+
+func TestGetVMs_WithMockConnector(t *testing.T) {
+	t.Parallel()
+	mock := &mockConnector{
+		domains: []libvirtconn.DomainInfo{
+			{Name: "vm1", UUID: "uuid-1", State: libvirtconn.DomainStateRunning},
+		},
+	}
+	handler, token := authHandler(t, func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+		if hostID != "local" {
+			return nil, errors.New("host not found")
+		}
+		return mock, nil
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/vms", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body vmListResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.VMs) == 0 && len(body.Orphans) == 0 {
+		t.Log("VMs/Orphans empty (no claimed metadata); hosts should show local")
+	}
+	if body.Hosts["local"] != "online" {
+		t.Errorf("expected local=online, got %q", body.Hosts["local"])
+	}
+}
+
+func TestGetVMs_ConnectorError(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandler(t, func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+		return nil, errors.New("connection refused")
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/vms", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 (hosts offline), got %d", rec.Code)
+	}
+	var body vmListResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Hosts["local"] != "offline" {
+		t.Errorf("expected local=offline when connector fails, got %q", body.Hosts["local"])
+	}
+}
+
+func TestGetHostPools_WithMockConnector(t *testing.T) {
+	t.Parallel()
+	mock := &mockConnector{
+		pools: []libvirtconn.StoragePoolInfo{
+			{Name: "default", UUID: "u1", Active: true},
+		},
+	}
+	handler, token := authHandler(t, func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+		return mock, nil
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/hosts/local/pools", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body []poolResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body) != 1 || body[0].Name != "default" {
+		t.Errorf("unexpected pools: %+v", body)
+	}
+}
+
+func TestGetHostPools_HostNotFound(t *testing.T) {
+	t.Parallel()
+	handler, token := authHandler(t, func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+		return nil, errors.New("host not found")
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/hosts/nonexistent/pools", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetHostPoolVolumes_WithMockConnector(t *testing.T) {
+	t.Parallel()
+	mock := &mockConnector{
+		volumes: []libvirtconn.StorageVolumeInfo{
+			{Name: "disk.qcow2", Path: "/path/disk.qcow2", Capacity: 1024},
+		},
+	}
+	handler, token := authHandler(t, func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+		return mock, nil
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/hosts/local/pools/default/volumes", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body []volumeResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body) != 1 || body[0].Name != "disk.qcow2" {
+		t.Errorf("unexpected volumes: %+v", body)
+	}
+}
+
+func TestGetHostNetworks_WithMockConnector(t *testing.T) {
+	t.Parallel()
+	mock := &mockConnector{
+		networks: []libvirtconn.NetworkInfo{
+			{Name: "default", UUID: "n1", Active: true},
+		},
+	}
+	handler, token := authHandler(t, func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+		return mock, nil
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/hosts/local/networks", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body []networkResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body) != 1 || body[0].Name != "default" {
+		t.Errorf("unexpected networks: %+v", body)
+	}
+}
+
+func TestIsLocalLibvirtURI(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		uri  string
+		want bool
+	}{
+		{"qemu:///system", true},
+		{"qemu+unix:///session", true},
+		{"qemu+ssh://host/system", false},
+		{"  qemu:///system  ", true},
+	}
+	for _, tt := range tests {
+		got := isLocalLibvirtURI(tt.uri)
+		if got != tt.want {
+			t.Errorf("isLocalLibvirtURI(%q) = %v, want %v", tt.uri, got, tt.want)
+		}
+	}
+}
+
+func TestGetVMDetail_WithMockConnector(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, _ := config.Load(configPath)
+	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
+	t.Cleanup(func() { _ = database.Close() })
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	disp := "My VM"
+	_ = database.InsertVMMetadata(context.Background(), "local", "uuid-claimed", true, &disp)
+
+	mock := &mockConnector{
+		domainInfo: libvirtconn.DomainInfo{Name: "claimed-vm", UUID: "uuid-claimed", State: libvirtconn.DomainStateRunning},
+	}
+	handler := NewRouter(RouterOptions{
+		Logger:            nil,
+		DB:                database,
+		Config:            loaded,
+		ConfigPath:        configPath,
+		ConfigPresent:     true,
+		DBPath:            filepath.Join(tempDir, "kui.db"),
+		GitPath:           tempDir,
+		ConnectorProvider: func(ctx context.Context, hostID string) (libvirtconn.Connector, error) { return mock, nil },
+	})
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	var loginResp struct{ Token string }
+	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login: %d", loginRec.Code)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/hosts/local/vms/uuid-claimed", nil)
+	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body vmDetailResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.DisplayName == nil || *body.DisplayName != "My VM" {
+		t.Errorf("unexpected display name: %v", body.DisplayName)
+	}
+}
+
+func TestGetVMDetail_HostNotFound(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, _ := config.Load(configPath)
+	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
+	t.Cleanup(func() { _ = database.Close() })
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	disp := "My VM"
+	_ = database.InsertVMMetadata(context.Background(), "local", "uuid-claimed", true, &disp)
+
+	handler := NewRouter(RouterOptions{
+		Logger:            nil,
+		DB:                database,
+		Config:            loaded,
+		ConfigPath:        configPath,
+		ConfigPresent:     true,
+		DBPath:            filepath.Join(tempDir, "kui.db"),
+		GitPath:           tempDir,
+		ConnectorProvider: func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+			return nil, errors.New("host not found")
+		},
+	})
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	var loginResp struct{ Token string }
+	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/hosts/nonexistent/vms/uuid-claimed", nil)
+	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestVMClaim_WithMockConnector(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, _ := config.Load(configPath)
+	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
+	t.Cleanup(func() { _ = database.Close() })
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+
+	mock := &mockConnector{
+		domainInfo: libvirtconn.DomainInfo{Name: "orphan-vm", UUID: "uuid-orphan", State: libvirtconn.DomainStateShutoff},
+	}
+	handler := NewRouter(RouterOptions{
+		Logger:            nil,
+		DB:                database,
+		Config:            loaded,
+		ConfigPath:        configPath,
+		ConfigPresent:     true,
+		DBPath:            filepath.Join(tempDir, "kui.db"),
+		GitPath:           tempDir,
+		ConnectorProvider: func(ctx context.Context, hostID string) (libvirtconn.Connector, error) { return mock, nil },
+	})
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	var loginResp struct{ Token string }
+	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login: %d", loginRec.Code)
+	}
+
+	claimBody := []byte(`{"display_name":"Claimed VM"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/hosts/local/vms/uuid-orphan/claim", bytes.NewReader(claimBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body vmDetailResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.DisplayName == nil || *body.DisplayName != "Claimed VM" {
+		t.Errorf("unexpected display name: %v", body.DisplayName)
 	}
 }

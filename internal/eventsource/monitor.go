@@ -15,37 +15,72 @@ import (
 
 const pollInterval = 5 * time.Second
 
+// ConnectorProvider returns a libvirt connector for the given host. When nil, the monitor
+// uses libvirtconn.Connect. Inject a mock in tests.
+type ConnectorProvider func(ctx context.Context, host config.Host) (libvirtconn.Connector, error)
+
 // Monitor polls hosts for domain state changes and connection status, emitting
 // vm.state_changed, host.online, and host.offline events via the Broadcaster.
 type Monitor struct {
-	config     *config.Config
-	broadcaster *broadcaster.Broadcaster
-	logger     *slog.Logger
-	mu         sync.Mutex
-	hostState  map[string]bool // hostID -> was online last poll
-	domainState map[string]libvirtconn.DomainLifecycleState // "hostID:uuid" -> state
+	config            *config.Config
+	broadcaster       *broadcaster.Broadcaster
+	logger            *slog.Logger
+	connectorProvider ConnectorProvider
+	pollInterval      time.Duration
+	mu                sync.Mutex
+	hostState         map[string]bool // hostID -> was online last poll
+	domainState       map[string]libvirtconn.DomainLifecycleState // "hostID:uuid" -> state
+}
+
+// MonitorOptions configures a Monitor.
+type MonitorOptions struct {
+	Config            *config.Config
+	Broadcaster       *broadcaster.Broadcaster
+	Logger            *slog.Logger
+	ConnectorProvider ConnectorProvider
+	PollInterval      time.Duration // 0 = default pollInterval
 }
 
 // NewMonitor creates a monitor. Pass nil config to disable (no hosts to poll).
 func NewMonitor(cfg *config.Config, bc *broadcaster.Broadcaster, logger *slog.Logger) *Monitor {
-	if logger == nil {
-		logger = slog.Default()
+	return NewMonitorWithOptions(MonitorOptions{Config: cfg, Broadcaster: bc, Logger: logger})
+}
+
+// NewMonitorWithOptions creates a monitor with optional ConnectorProvider for testing.
+func NewMonitorWithOptions(opts MonitorOptions) *Monitor {
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
 	}
-	return &Monitor{
-		config:      cfg,
-		broadcaster: bc,
-		logger:      logger,
-		hostState:   make(map[string]bool),
-		domainState: make(map[string]libvirtconn.DomainLifecycleState),
+	m := &Monitor{
+		config:            opts.Config,
+		broadcaster:       opts.Broadcaster,
+		logger:            opts.Logger,
+		connectorProvider: opts.ConnectorProvider,
+		hostState:         make(map[string]bool),
+		domainState:       make(map[string]libvirtconn.DomainLifecycleState),
 	}
+	if opts.PollInterval > 0 {
+		m.pollInterval = opts.PollInterval
+	} else {
+		m.pollInterval = pollInterval
+	}
+	return m
 }
 
 // Run starts the poll loop. Blocks until ctx is cancelled.
 func (m *Monitor) Run(ctx context.Context) {
+	interval := m.pollInterval
+	if interval == 0 {
+		interval = pollInterval
+	}
+	m.runWithInterval(ctx, interval)
+}
+
+func (m *Monitor) runWithInterval(ctx context.Context, interval time.Duration) {
 	if m.config == nil || len(m.config.Hosts) == 0 || m.broadcaster == nil {
 		return
 	}
-	ticker := time.NewTicker(pollInterval)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	m.poll(ctx)
 	for {
@@ -65,11 +100,17 @@ func (m *Monitor) poll(ctx context.Context) {
 }
 
 func (m *Monitor) pollHost(ctx context.Context, h config.Host) {
-	keyfile := ""
-	if h.Keyfile != nil {
-		keyfile = *h.Keyfile
+	var conn libvirtconn.Connector
+	var err error
+	if m.connectorProvider != nil {
+		conn, err = m.connectorProvider(ctx, h)
+	} else {
+		keyfile := ""
+		if h.Keyfile != nil {
+			keyfile = *h.Keyfile
+		}
+		conn, err = libvirtconn.Connect(ctx, h.URI, keyfile)
 	}
-	conn, err := libvirtconn.Connect(ctx, h.URI, keyfile)
 	if err != nil {
 		if errors.Is(err, libvirtconn.ErrLibvirtDisabled) {
 			return

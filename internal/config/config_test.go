@@ -113,7 +113,8 @@ func TestHostKeyfileEnvVarUsesKUI_HOST_Prefix(t *testing.T) {
 }
 
 func TestLoadRejectsQemuSSHWithoutKeyfile(t *testing.T) {
-	t.Parallel()
+	// Do not run in parallel: env var affects other tests
+	t.Cleanup(func() { os.Unsetenv("KUI_HOST_REMOTE_KEYFILE") })
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 	_ = os.Unsetenv("KUI_HOST_REMOTE_KEYFILE")
 
@@ -135,7 +136,8 @@ jwt_secret: "` + validJWTSecret + `"
 }
 
 func TestLoadAcceptsQemuSSHWithKeyfileInConfig(t *testing.T) {
-	t.Parallel()
+	// Do not run in parallel: env var affects other tests
+	t.Cleanup(func() { os.Unsetenv("KUI_HOST_REMOTE_KEYFILE") })
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 	_ = os.Unsetenv("KUI_HOST_REMOTE_KEYFILE")
 
@@ -158,7 +160,7 @@ jwt_secret: "` + validJWTSecret + `"
 }
 
 func TestLoadAcceptsQemuSSHWithKeyfileInEnv(t *testing.T) {
-	t.Parallel()
+	// Do not run in parallel: env var affects other tests
 	t.Cleanup(func() { os.Unsetenv("KUI_HOST_REMOTE_KEYFILE") })
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 	if err := os.Setenv("KUI_HOST_REMOTE_KEYFILE", "/env/key"); err != nil {
@@ -183,7 +185,8 @@ jwt_secret: "` + validJWTSecret + `"
 }
 
 func TestLoadAcceptsQemuSSHWithKeyfileInURI(t *testing.T) {
-	t.Parallel()
+	// Do not run in parallel: env var affects other tests
+	t.Cleanup(func() { os.Unsetenv("KUI_HOST_REMOTE_KEYFILE") })
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 	_ = os.Unsetenv("KUI_HOST_REMOTE_KEYFILE")
 

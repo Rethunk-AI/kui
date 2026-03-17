@@ -502,6 +502,12 @@ input[type="checkbox"] {
   font-size: 0.9rem;
   color: var(--kui-fg-muted);
 }
+.modal__hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
+  color: var(--kui-fg-muted);
+}
+
 .modal__error {
   color: var(--kui-status-error);
   margin-bottom: 0.5rem;

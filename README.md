@@ -14,25 +14,19 @@ Web-based KVM User Interface for users who prefer a UI over CLI. Connects to lib
 
 ## Quick Start
 
-1. Build: `make all` (or `go build -tags libvirt -o bin/ ./cmd/...`).
+1. Build: `make all` (builds with `-tags libvirt` by default).
 2. Run: `./bin/kui` (default config `/etc/kui/config.yaml`). When config is missing, KUI runs the setup wizard.
 3. Open the UI in a browser; complete setup (admin account, hosts).
 4. Log in and manage VMs. See [Admin Guide](docs/admin-guide.md) and [User Guide](docs/user-guide.md).
 
 ## Build
 
-Libvirt bindings require CGO and `libvirt-dev` headers. If those headers are unavailable, build and test the project without libvirt-enabled files using:
+Libvirt bindings require CGO and `libvirt-dev` headers. If those headers are unavailable, build and test without libvirt:
 
 ```bash
-go build ./...
-go test ./...
-go vet ./...
-```
-
-Run the libvirt connector integration test against `test:///default` with:
-
-```bash
-go test -tags libvirt ./internal/libvirtconn/...
+make build BUILD_TAGS=
+make test BUILD_TAGS=
+make vet BUILD_TAGS=
 ```
 
 ## Coverage

@@ -66,15 +66,12 @@ KUI listens on `:8080` by default. Behind a reverse proxy, configure WebSocket a
 ## Build and Run
 
 ```bash
-# With libvirt (production)
+# With libvirt (default, production)
 make all
-# or: go build -tags libvirt -o bin/ ./cmd/...
-#     go test -tags libvirt ./...
-#     go vet ./...
 
 # Without libvirt (CI, no KVM)
-go build ./...
-go test ./...
+make build BUILD_TAGS=
+make test BUILD_TAGS=
 ```
 
 Frontend: `corepack enable` (once), then `cd web && corepack yarn install && corepack yarn run build`. Uses Yarn 4 via Corepack (`packageManager` in package.json). Embedded in binary via `//go:embed`; or set `KUI_WEB_DIR` to serve from disk. See [Makefile](../Makefile).

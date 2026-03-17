@@ -1,0 +1,13 @@
+---
+description: Router orchestration — avoid redundant verification, batch make runs
+alwaysApply: true
+---
+
+# Router delegation
+
+When delegating developer → verifier:
+
+1. **Developer:** Run `make all` once at completion. During development, use incremental commands (`go test ./pkg/...`, `go build`) — do not run full `make all` after every change.
+2. **Verifier:** When developer reports `make all` passed, do not re-run full `make all`. Trust that output; focus on plan compliance and spot-checks. Re-run only if developer reported failure or did not run it.
+
+This avoids wasting 75%+ of time on redundant `make` commands in the develop→verify loop.

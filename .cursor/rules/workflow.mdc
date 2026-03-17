@@ -11,8 +11,13 @@ alwaysApply: true
 2. For non-trivial work, invoke the `planner` subagent first — it writes `specs/active/[task-id]/plan.md` in isolation.
 3. Invoke the `developer` subagent to implement against the plan.
 4. Invoke the `verifier` subagent before marking anything done.
+5. When the spec is complete and the verifier confirms requirements are met in the implementation, move the spec to `specs/done/`.
 
 Trivial changes (typo fixes, single-line config changes) can skip the planner.
+
+## Spec completion
+
+When a specification is complete, move it to `specs/done/` only after a separate subagent (verifier) has confirmed that the implementation meets the spec requirements. Do not move specs to `specs/done/` before verification.
 
 ## Greenfield
 
@@ -44,6 +49,13 @@ This repo is Go-only. Use the Go toolchain and Makefile:
 - External CLIs (`docker`, `kubectl`, `psql`, `golangci-lint`) may be invoked directly.
 
 **Do not execute built binaries.** Verification uses unit tests, integration tests, `go vet`, and linters only. Running `./bin/...` or invoking compiled artifacts is disallowed to avoid arbitrary code execution. Test via `run(args, out, errOut)` seams and `go test`.
+
+### Verification efficiency (avoid redundant make runs)
+
+- **During development:** Use incremental commands (`go test ./internal/foo/...`, `go build ./cmd/...`) to validate changes. Do not run `make all` after every edit.
+- **At completion:** Developer runs `make all` once and reports pass/fail. That run is the canonical verification.
+- **Verifier:** When developer reports `make all` passed, do not re-run full `make all`. Trust the developer's output; verifier focuses on plan compliance, spec coverage, and spot-checks (e.g. `go test ./changed/pkg/...` if needed). Re-run `make all` only when developer reported failure or did not run it.
+- **Router delegation:** When delegating developer → verifier, instruct developer to run `make all` once at completion. Instruct verifier to skip full `make all` when developer already passed.
 
 ## Commit batching
 

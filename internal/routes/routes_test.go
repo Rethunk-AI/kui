@@ -1096,9 +1096,9 @@ func TestNormalizeHosts(t *testing.T) {
 		{ID: "a", URI: "qemu:///system", Keyfile: ""},
 		{ID: "b", URI: "qemu+ssh://host/system", Keyfile: "/key"},
 	}
-	hosts, ok := normalizeHosts(valid)
-	if !ok || len(hosts) != 2 {
-		t.Fatalf("normalizeHosts(valid) = %v, %v; want ok=true, len=2", hosts, ok)
+	hosts, err := normalizeHosts(valid)
+	if err != nil || len(hosts) != 2 {
+		t.Fatalf("normalizeHosts(valid) = %v, %v; want err=nil, len=2", hosts, err)
 	}
 	if hosts[0].ID != "a" || hosts[1].ID != "b" {
 		t.Errorf("unexpected hosts: %+v", hosts)
@@ -1109,8 +1109,10 @@ func TestNormalizeHosts(t *testing.T) {
 		URI     string `json:"uri"`
 		Keyfile string `json:"keyfile"`
 	}{{ID: "", URI: "qemu:///system", Keyfile: ""}}
-	if _, ok := normalizeHosts(emptyID); ok {
+	if _, err := normalizeHosts(emptyID); err == nil {
 		t.Error("normalizeHosts(empty id) should fail")
+	} else if !strings.Contains(err.Error(), "host id is required") {
+		t.Errorf("normalizeHosts(empty id) should return 'host id is required', got %q", err.Error())
 	}
 
 	emptyURI := []struct {
@@ -1118,8 +1120,10 @@ func TestNormalizeHosts(t *testing.T) {
 		URI     string `json:"uri"`
 		Keyfile string `json:"keyfile"`
 	}{{ID: "a", URI: "", Keyfile: ""}}
-	if _, ok := normalizeHosts(emptyURI); ok {
+	if _, err := normalizeHosts(emptyURI); err == nil {
 		t.Error("normalizeHosts(empty uri) should fail")
+	} else if !strings.Contains(err.Error(), "host uri is required") {
+		t.Errorf("normalizeHosts(empty uri) should return 'host uri is required', got %q", err.Error())
 	}
 
 	dupID := []struct {
@@ -1130,8 +1134,10 @@ func TestNormalizeHosts(t *testing.T) {
 		{ID: "a", URI: "qemu:///system", Keyfile: ""},
 		{ID: "a", URI: "qemu:///session", Keyfile: ""},
 	}
-	if _, ok := normalizeHosts(dupID); ok {
+	if _, err := normalizeHosts(dupID); err == nil {
 		t.Error("normalizeHosts(duplicate id) should fail")
+	} else if !strings.Contains(err.Error(), "duplicate host id") {
+		t.Errorf("normalizeHosts(duplicate id) should return 'duplicate host id', got %q", err.Error())
 	}
 
 	qemuSSHNoKeyfile := []struct {
@@ -1139,8 +1145,10 @@ func TestNormalizeHosts(t *testing.T) {
 		URI     string `json:"uri"`
 		Keyfile string `json:"keyfile"`
 	}{{ID: "a", URI: "qemu+ssh://host/system", Keyfile: ""}}
-	if _, ok := normalizeHosts(qemuSSHNoKeyfile); ok {
+	if _, err := normalizeHosts(qemuSSHNoKeyfile); err == nil {
 		t.Error("normalizeHosts(qemu+ssh without keyfile) should fail")
+	} else if !strings.Contains(err.Error(), "keyfile required for qemu+ssh") {
+		t.Errorf("normalizeHosts(qemu+ssh without keyfile) should return 'keyfile required for qemu+ssh', got %q", err.Error())
 	}
 }
 
@@ -3192,6 +3200,49 @@ func TestValidateHost_EmptyURI(t *testing.T) {
 	}
 }
 
+func TestValidateHost_QemuSSHNoKeyfile(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        nil,
+		ConfigPath:    filepath.Join(tempDir, "nonexistent.yaml"),
+		ConfigPresent: false,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	payload := map[string]string{"host_id": "remote", "uri": "qemu+ssh://host/system", "keyfile": ""}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/validate-host", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Valid bool   `json:"valid"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Valid {
+		t.Error("expected valid=false for qemu+ssh without keyfile")
+	}
+	if !strings.Contains(body.Error, "keyfile required for qemu+ssh") {
+		t.Errorf("expected error to contain 'keyfile required for qemu+ssh', got %q", body.Error)
+	}
+}
+
 func TestValidateHost_NoPools(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
@@ -3407,18 +3458,21 @@ func TestSetupComplete_BadPayload(t *testing.T) {
 	})
 
 	tests := []struct {
-		name string
-		body map[string]any
-		want int
+		name             string
+		body             map[string]any
+		want             int
+		wantBodyContains string
 	}{
-		{"empty admin username", map[string]any{"admin": map[string]string{"username": "", "password": "x"}, "hosts": []map[string]string{{"id": "a", "uri": "qemu:///system", "keyfile": ""}}, "default_host": "a"}, 400},
-		{"empty admin password", map[string]any{"admin": map[string]string{"username": "a", "password": ""}, "hosts": []map[string]string{{"id": "a", "uri": "qemu:///system", "keyfile": ""}}, "default_host": "a"}, 400},
-		{"no hosts", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{}, "default_host": "a"}, 400},
-		{"empty default_host", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "a", "uri": "qemu:///system", "keyfile": ""}}, "default_host": ""}, 400},
-		{"default_host not in hosts", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "a", "uri": "qemu:///system", "keyfile": ""}}, "default_host": "b"}, 400},
-		{"invalid hosts empty id", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "", "uri": "qemu:///system", "keyfile": ""}}, "default_host": "a"}, 400},
-		{"invalid hosts empty uri", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "a", "uri": "", "keyfile": ""}}, "default_host": "a"}, 400},
-		{"bad json", nil, 400},
+		{"empty admin username", map[string]any{"admin": map[string]string{"username": "", "password": "x"}, "hosts": []map[string]string{{"id": "a", "uri": "qemu:///system", "keyfile": ""}}, "default_host": "a"}, 400, ""},
+		{"empty admin password", map[string]any{"admin": map[string]string{"username": "a", "password": ""}, "hosts": []map[string]string{{"id": "a", "uri": "qemu:///system", "keyfile": ""}}, "default_host": "a"}, 400, ""},
+		{"no hosts", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{}, "default_host": "a"}, 400, ""},
+		{"empty default_host", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "a", "uri": "qemu:///system", "keyfile": ""}}, "default_host": ""}, 400, ""},
+		{"default_host not in hosts", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "a", "uri": "qemu:///system", "keyfile": ""}}, "default_host": "b"}, 400, ""},
+		{"invalid hosts empty id", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "", "uri": "qemu:///system", "keyfile": ""}}, "default_host": "a"}, 400, "host id is required"},
+		{"invalid hosts empty uri", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "a", "uri": "", "keyfile": ""}}, "default_host": "a"}, 400, "host uri is required"},
+		{"duplicate host id", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "local", "uri": "qemu:///system", "keyfile": ""}, {"id": "local", "uri": "qemu:///session", "keyfile": ""}}, "default_host": "local"}, 400, "duplicate host id: local"},
+		{"qemu+ssh no keyfile", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "remote", "uri": "qemu+ssh://host/system", "keyfile": ""}}, "default_host": "remote"}, 400, "Host remote: keyfile required for qemu+ssh URI"},
+		{"bad json", nil, 400, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3434,6 +3488,9 @@ func TestSetupComplete_BadPayload(t *testing.T) {
 			handler.ServeHTTP(rec, req)
 			if rec.Code != tt.want {
 				t.Errorf("expected %d, got %d: %s", tt.want, rec.Code, rec.Body.String())
+			}
+			if tt.wantBodyContains != "" && !strings.Contains(rec.Body.String(), tt.wantBodyContains) {
+				t.Errorf("expected body to contain %q, got %s", tt.wantBodyContains, rec.Body.String())
 			}
 		})
 	}

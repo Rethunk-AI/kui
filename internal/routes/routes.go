@@ -3126,6 +3126,18 @@ func (r *routerState) validateHost() http.HandlerFunc {
 			return
 		}
 
+		hostID := strings.TrimSpace(payload.HostID)
+		if hostID == "" {
+			hostID = "host"
+		}
+		if strings.HasPrefix(strings.TrimSpace(payload.URI), "qemu+ssh://") && strings.TrimSpace(payload.Keyfile) == "" {
+			writeJSON(w, http.StatusOK, validateHostResponse{
+				Valid: false,
+				Error: fmt.Sprintf("Host %s: keyfile required for qemu+ssh URI", hostID),
+			})
+			return
+		}
+
 		conn, err := r.setupConnect(req.Context(), payload.URI, payload.Keyfile)
 		if err != nil {
 			r.logger.Debug("validate-host failed", "host_id", payload.HostID, "error", err)
@@ -3136,11 +3148,6 @@ func (r *routerState) validateHost() http.HandlerFunc {
 			return
 		}
 		defer conn.Close()
-
-		hostID := strings.TrimSpace(payload.HostID)
-		if hostID == "" {
-			hostID = "host"
-		}
 
 		pools, err := conn.ListPools(req.Context())
 		if err != nil {
@@ -3216,9 +3223,9 @@ func (r *routerState) setupComplete() http.HandlerFunc {
 			return
 		}
 
-		hosts, ok := normalizeHosts(payload.Hosts)
-		if !ok {
-			writeJSONError(w, http.StatusBadRequest, "invalid host payload")
+		hosts, err := normalizeHosts(payload.Hosts)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if !containsHost(hosts, payload.DefaultHost) {
@@ -3434,7 +3441,7 @@ func normalizeHosts(in []struct {
 	ID      string `json:"id"`
 	URI     string `json:"uri"`
 	Keyfile string `json:"keyfile"`
-}) ([]config.Host, bool) {
+}) ([]config.Host, error) {
 	seen := map[string]struct{}{}
 	out := make([]config.Host, 0, len(in))
 
@@ -3443,14 +3450,17 @@ func normalizeHosts(in []struct {
 		uri := strings.TrimSpace(host.URI)
 		keyfile := strings.TrimSpace(host.Keyfile)
 
-		if id == "" || uri == "" {
-			return nil, false
+		if id == "" {
+			return nil, fmt.Errorf("host id is required")
 		}
-		if strings.HasPrefix(uri, "qemu+ssh://") && keyfile == "" {
-			return nil, false
+		if uri == "" {
+			return nil, fmt.Errorf("host uri is required")
 		}
 		if _, exists := seen[id]; exists {
-			return nil, false
+			return nil, fmt.Errorf("duplicate host id: %s", id)
+		}
+		if strings.HasPrefix(uri, "qemu+ssh://") && keyfile == "" {
+			return nil, fmt.Errorf("Host %s: keyfile required for qemu+ssh URI", id)
 		}
 		seen[id] = struct{}{}
 
@@ -3465,7 +3475,7 @@ func normalizeHosts(in []struct {
 		})
 	}
 
-	return out, true
+	return out, nil
 }
 
 func containsHost(hosts []config.Host, id string) bool {

@@ -32,6 +32,8 @@ export function renderSetupWizard(
     <input id="setup-admin-username" type="text" name="admin_username" required aria-required="true" autocomplete="username" aria-describedby="setup-error" />
     <label for="setup-admin-password">Password</label>
     <input id="setup-admin-password" type="password" name="admin_password" required aria-required="true" autocomplete="new-password" aria-describedby="setup-error" />
+    <label for="setup-admin-password-confirm">Confirm password</label>
+    <input id="setup-admin-password-confirm" type="password" name="admin_password_confirm" required aria-required="true" autocomplete="new-password" aria-describedby="setup-error" />
   `;
   form.appendChild(adminSection);
 
@@ -134,6 +136,9 @@ export function renderSetupWizard(
       updateDefaultHostSelect();
     });
 
+    inps.id.addEventListener("input", updateDefaultHostSelect);
+    inps.id.addEventListener("change", updateDefaultHostSelect);
+
     hostsContainer.appendChild(row);
   }
 
@@ -187,9 +192,16 @@ export function renderSetupWizard(
     const adminPassword = (
       form.querySelector("#setup-admin-password") as HTMLInputElement
     )?.value;
+    const adminPasswordConfirm = (
+      form.querySelector("#setup-admin-password-confirm") as HTMLInputElement
+    )?.value;
 
     if (!adminUsername || !adminPassword) {
       errorEl.textContent = "Admin username and password are required";
+      return;
+    }
+    if (adminPassword !== adminPasswordConfirm) {
+      errorEl.textContent = "Passwords do not match";
       return;
     }
 
@@ -198,7 +210,11 @@ export function renderSetupWizard(
     for (const row of rows) {
       const inps = getHostInputs(row);
       if (!inps) continue;
-      const id = inps.id.value.trim() || `host-${hosts.length}`;
+      const id = inps.id.value.trim();
+      if (id === "") {
+        errorEl.textContent = "Host ID is required";
+        return;
+      }
       const uri = inps.uri.value.trim();
       if (!uri) {
         errorEl.textContent = "All hosts must have a URI";

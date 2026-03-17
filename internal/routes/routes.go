@@ -239,6 +239,7 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/pause", state.vmPause())
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/resume", state.vmResume())
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/destroy", state.vmDestroy())
+	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/recover", state.vmRecover())
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/claim", state.vmClaim())
 	router.Post("/api/hosts/{host_id}/vms/{libvirt_uuid}/clone", state.vmClone())
 	router.Get("/api/hosts/{host_id}/vms/{libvirt_uuid}/vnc", state.vncProxy())
@@ -1148,6 +1149,62 @@ func (r *routerState) vmDestroy() http.HandlerFunc {
 	return r.vmLifecycleOp("destroy", func(conn libvirtconn.Connector, ctx context.Context, uuid string) error {
 		return conn.Destroy(ctx, uuid)
 	})
+}
+
+func (r *routerState) vmRecover() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		user, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		hostID := chi.URLParam(req, "host_id")
+		libvirtUUID := chi.URLParam(req, "libvirt_uuid")
+		if hostID == "" || libvirtUUID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id and libvirt_uuid required")
+			return
+		}
+		meta, err := r.db.GetVMMetadata(req.Context(), hostID, libvirtUUID)
+		if err != nil || meta == nil || !meta.Claimed {
+			writeJSONError(w, http.StatusNotFound, "VM not found")
+			return
+		}
+		conn, err := r.getConnectorForHost(req.Context(), hostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		fromState, _ := conn.GetState(req.Context(), libvirtUUID)
+		_ = conn.Destroy(req.Context(), libvirtUUID)
+		if err := conn.Undefine(req.Context(), libvirtUUID); err != nil {
+			r.logger.Error("recover failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "recovery failed")
+			return
+		}
+		if err := r.db.DeleteVMMetadata(req.Context(), hostID, libvirtUUID); err != nil {
+			r.logger.Error("delete vm_metadata after recover failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "recovery failed")
+			return
+		}
+		_ = audit.RecordEvent(req.Context(), r.db, audit.Event{
+			EventType:  "vm_lifecycle",
+			EntityType: "vm",
+			EntityID:   libvirtUUID,
+			UserID:     &user.ID,
+			Payload: map[string]string{
+				"action":     "recover",
+				"from_state": string(fromState),
+				"to_state":   "undefined",
+				"host_id":    hostID,
+			},
+		})
+		writeJSON(w, http.StatusOK, map[string]string{"status": "undefined"})
+	}
 }
 
 func (r *routerState) vmStop() http.HandlerFunc {

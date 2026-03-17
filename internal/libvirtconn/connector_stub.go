@@ -70,6 +70,7 @@ type Connector interface {
 	Create(ctx context.Context, uuid string) error
 	Shutdown(ctx context.Context, uuid string) error
 	Destroy(ctx context.Context, uuid string) error
+	Undefine(ctx context.Context, uuid string) error
 	Suspend(ctx context.Context, uuid string) error
 	Resume(ctx context.Context, uuid string) error
 	GetState(ctx context.Context, uuid string) (DomainLifecycleState, error)

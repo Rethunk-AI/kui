@@ -213,6 +213,15 @@ func (d *DB) UpdateVMMetadata(ctx context.Context, hostID, libvirtUUID string, d
 	return nil
 }
 
+// DeleteVMMetadata removes the vm_metadata row for the given host_id and libvirt_uuid.
+func (d *DB) DeleteVMMetadata(ctx context.Context, hostID, libvirtUUID string) error {
+	_, err := d.SQL.ExecContext(ctx, `DELETE FROM vm_metadata WHERE host_id = ? AND libvirt_uuid = ?`, hostID, libvirtUUID)
+	if err != nil {
+		return fmt.Errorf("delete vm_metadata: %w", err)
+	}
+	return nil
+}
+
 // UpsertVMMetadataClaim inserts or updates vm_metadata for claim: sets claimed=1, display_name, last_access.
 func (d *DB) UpsertVMMetadataClaim(ctx context.Context, hostID, libvirtUUID string, displayName string) error {
 	now := time.Now().UTC().Format(time.RFC3339)

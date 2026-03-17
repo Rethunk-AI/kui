@@ -184,6 +184,15 @@ input[type="checkbox"] {
   background: rgba(229, 115, 115, 0.25);
   color: var(--kui-status-error);
 }
+.vm-list__badge--stuck {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(255, 152, 0, 0.3);
+  color: var(--kui-status-warning);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
 .vm-list__rel-time {
   font-size: 0.8rem;
   color: var(--kui-fg-muted);
@@ -215,6 +224,14 @@ input[type="checkbox"] {
 }
 .vm-list__btn--claim:hover:not(:disabled) {
   background: rgba(76, 175, 80, 0.3);
+}
+.vm-list__btn--recover {
+  background: rgba(255, 152, 0, 0.2);
+  border-color: rgba(255, 152, 0, 0.4);
+  color: var(--kui-status-warning);
+}
+.vm-list__btn--recover:hover:not(:disabled) {
+  background: rgba(255, 152, 0, 0.3);
 }
 
 /* Orphans — collapsible section */

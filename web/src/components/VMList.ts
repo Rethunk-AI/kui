@@ -3,8 +3,9 @@
  * Spec §6: flat list, group by last_access (or created_at fallback), display_name, status, relative-time.
  * Orphans in separate section with Claim.
  */
-import { ApiError, claimVM, type VM, type Orphan, type VMsResponse } from "../lib/api";
+import { ApiError, claimVM, recoverVM, type VM, type Orphan, type VMsResponse } from "../lib/api";
 import { addAlert } from "../lib/alerts";
+import { showToast } from "../lib/toast";
 
 const GROUP_BY_LAST_ACCESS = "last_access";
 const GROUP_BY_CREATED_AT = "created_at";
@@ -45,6 +46,10 @@ function relativeTime(date: Date): string {
   if (sec < 2592000) return `${Math.floor(sec / 86400)}d ago`;
   if (sec < 31536000) return `${Math.floor(sec / 2592000)}mo ago`;
   return `${Math.floor(sec / 31536000)}y ago`;
+}
+
+function isStuck(vm: VM): boolean {
+  return vm.status === "crashed" || vm.status === "blocked";
 }
 
 function getRelativeTimeLabel(vm: VM): string {
@@ -202,13 +207,16 @@ export function renderVMList(
         const displayName = vm.display_name ?? vm.libvirt_uuid ?? "VM";
         const relTime = getRelativeTimeLabel(vm);
 
+        const stuck = isStuck(vm);
         li.innerHTML = `
           <div class="vm-list__row-main">
             <span class="vm-list__name">${escapeHtml(displayName)}</span>
             <span class="vm-list__status vm-list__status--${escapeHtml(vm.status.toLowerCase())}" title="Host: ${escapeHtml(hostStatus)}">${escapeHtml(vm.status)}</span>
+            ${stuck ? `<span class="vm-list__badge vm-list__badge--stuck">Stuck</span>` : ""}
             ${relTime ? `<span class="vm-list__rel-time">${escapeHtml(relTime)}</span>` : ""}
           </div>
           <div class="vm-list__row-actions">
+            ${stuck ? `<button type="button" class="vm-list__btn vm-list__btn--recover" title="Recover stuck VM">Recover</button>` : ""}
             ${onOpenCloneModal ? `<button type="button" class="vm-list__btn vm-list__btn--clone" title="Clone VM">Clone</button>` : ""}
             <button type="button" class="vm-list__btn vm-list__btn--console" data-host="${escapeAttr(vm.host_id)}" data-uuid="${escapeAttr(vm.libvirt_uuid)}" title="Open console">Console</button>
           </div>
@@ -220,6 +228,12 @@ export function renderVMList(
           li.focus();
         });
 
+        const recoverBtn = li.querySelector(".vm-list__btn--recover");
+        if (recoverBtn && stuck) {
+          recoverBtn.addEventListener("click", () => {
+            handleRecover(vm, recoverBtn as HTMLButtonElement, onRefresh);
+          });
+        }
         const cloneBtn = li.querySelector(".vm-list__btn--clone");
         if (cloneBtn && onOpenCloneModal) {
           cloneBtn.addEventListener("click", () => onOpenCloneModal(vm));
@@ -319,6 +333,23 @@ async function handleClaim(
   } catch (err) {
     btn.disabled = false;
     const msg = err instanceof ApiError ? err.message : "Claim failed";
+    addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);
+  }
+}
+
+async function handleRecover(
+  vm: VM,
+  btn: HTMLButtonElement,
+  onRefresh: () => void
+): Promise<void> {
+  btn.disabled = true;
+  try {
+    await recoverVM(vm.host_id, vm.libvirt_uuid);
+    onRefresh();
+  } catch (err) {
+    btn.disabled = false;
+    const msg = err instanceof ApiError ? err.message : "Recover failed";
+    showToast(msg, "warn");
     addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);
   }
 }

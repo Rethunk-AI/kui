@@ -113,6 +113,16 @@ export async function claimVM(
   });
 }
 
+export async function recoverVM(
+  hostId: string,
+  libvirtUuid: string
+): Promise<void> {
+  await apiFetch<{ status: string }>(
+    `/hosts/${encodeURIComponent(hostId)}/vms/${encodeURIComponent(libvirtUuid)}/recover`,
+    { method: "POST" }
+  );
+}
+
 export interface Pool {
   name: string;
   uuid: string;

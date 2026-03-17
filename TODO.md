@@ -16,17 +16,15 @@
 
 ### Specs
 
-All 12 specs complete and in `specs/done/`:
+All 13 specs complete and in `specs/done/`:
 schema-storage, spec-libvirt-connector, spec-application-bootstrap, api-auth,
 spec-audit-integration, spec-vm-lifecycle-create, spec-frontend-build,
 spec-template-management, spec-console-realtime, spec-ui-deployment,
-feat-keyboard-shortcuts, feat-a11y.
+feat-keyboard-shortcuts, feat-a11y, feat-stuck-vm.
 
 ### Active Specs
 
-| spec_id | plan_path | progress |
-|---------|-----------|----------|
-| feat-stuck-vm | specs/active/feat-stuck-vm/plan.md | TODO |
+None. All planned specs complete.
 
 ---
 
@@ -39,13 +37,12 @@ feat-keyboard-shortcuts, feat-a11y.
 | Build | pass |
 | Test | pass |
 | Vet | pass |
-| Active specs | 1 |
-| Done specs | 12 |
-| Per-spec task status | feat-a11y T1–T9 DONE (spec complete); feat-stuck-vm TODO |
+| Active specs | 0 |
+| Done specs | 13 |
+| Per-spec task status | feat-a11y T1–T9 DONE; feat-stuck-vm T1–T5 DONE |
 
 ### Remaining Implementation Tasks
 
-**feat-stuck-vm** (specs/active/feat-stuck-vm/plan.md): TODO (next)
 
 ### Deferred (Planning Required)
 
@@ -54,17 +51,17 @@ feat-keyboard-shortcuts, feat-a11y.
 
 ### Planner Triggers
 
-When feat-stuck-vm is done: create specs for feat-orphan-bulk, feat-domain-xml-edit.
+Create specs for feat-orphan-bulk, feat-domain-xml-edit (planner triggers).
 
 ### Recommended Delegation Order
 
-1. feat-stuck-vm (next)
+All v2 specs complete. Next: create specs for feat-orphan-bulk, feat-domain-xml-edit.
 
 ---
 
 ## Remaining Work
 
-- feat-stuck-vm (v2, next)
+- feat-orphan-bulk, feat-domain-xml-edit (planning required)
 
 ---
 

@@ -74,6 +74,7 @@ type Connector interface {
 	Create(ctx context.Context, uuid string) error
 	Shutdown(ctx context.Context, uuid string) error
 	Destroy(ctx context.Context, uuid string) error
+	Undefine(ctx context.Context, uuid string) error
 	Suspend(ctx context.Context, uuid string) error
 	Resume(ctx context.Context, uuid string) error
 	GetState(ctx context.Context, uuid string) (DomainLifecycleState, error)
@@ -280,6 +281,28 @@ func (c *connector) Destroy(ctx context.Context, uuid string) error {
 
 	if err = domain.Destroy(); err != nil {
 		return c.wrapErr(fmt.Sprintf("destroy domain uuid=%q", uuid), err)
+	}
+
+	return nil
+}
+
+func (c *connector) Undefine(ctx context.Context, uuid string) error {
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+
+	domain, err := c.lookupDomain(ctx, "undefine domain", uuid)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = domain.Free()
+	}()
+
+	// Try UndefineFlags with NVRAM cleanup first for thorough removal.
+	// If domain is running, libvirt rejects undefine; caller should Destroy first.
+	if err = domain.UndefineFlags(libvirt.DOMAIN_UNDEFINE_NVRAM); err != nil {
+		return c.wrapErr(fmt.Sprintf("undefine domain uuid=%q", uuid), err)
 	}
 
 	return nil

@@ -140,7 +140,7 @@ Implement stuck VM detection and recovery with escalating actions: force stop (D
 - Add `recoverVM(hostId: string, libvirtUuid: string): Promise<void>`
 - POST to `/api/hosts/{host_id}/vms/{libvirt_uuid}/recover`
 
-### 5. Frontend: VM list UI
+### 5. Frontend: VM list UI [x]
 
 **File:** `web/src/components/VMList.ts`
 

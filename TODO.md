@@ -47,6 +47,18 @@ feat-keyboard-shortcuts, feat-a11y, feat-stuck-vm, feat-orphan-bulk, feat-domain
 
 **coverage-100** (specs/active/coverage-100/plan.md): Optional — routes 62%, sshtunnel 60%, cmd 70.3%, web 92%. Targets met for cmd and web.
 
+**Gap remediation (specs/active/gap-audit/gaps.md):**
+
+| # | Spec | Task | Status |
+|---|------|------|--------|
+| 7 | gap-template-network | Validate template network on target host before create; return 400 with clear error | DONE |
+| 8 | gap-domain-xml-network | Validate network in edited domain XML before apply (same pattern as patchVMConfig) | DONE |
+| 6 | gap-401-session-audit | Audit apiFetch/SSE for 401 handling; add global 401 handler if needed; document findings | DONE |
+
+### Remaining Implementation Tasks
+
+None. Gaps #6, #7, #8 complete.
+
 ### Deferred (Planning Required)
 
 - v3: Backup/restore, import/export
@@ -59,6 +71,7 @@ feat-keyboard-shortcuts, feat-a11y, feat-stuck-vm, feat-orphan-bulk, feat-domain
 
 ## Remaining Work
 
+- None. Gaps #6, #7, #8 (session 401, template network, domain XML network) complete.
 - coverage-100 (optional; routes 62%, cmd 70%, web 92%)
 
 ---

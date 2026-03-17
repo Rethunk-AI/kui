@@ -63,6 +63,12 @@ func (m *mockConnector) CreateVolumeFromXML(ctx context.Context, pool, xml strin
 func (m *mockConnector) CloneVolume(ctx context.Context, pool, sourceName, targetName string) error {
 	return errors.New("not implemented")
 }
+func (m *mockConnector) CreateStoragePoolFromXML(ctx context.Context, xml string) (libvirtconn.StoragePoolInfo, error) {
+	return libvirtconn.StoragePoolInfo{}, errors.New("not implemented")
+}
+func (m *mockConnector) CreateNetworkFromXML(ctx context.Context, xml string) (libvirtconn.NetworkInfo, error) {
+	return libvirtconn.NetworkInfo{}, errors.New("not implemented")
+}
 func (m *mockConnector) CopyVolume(ctx context.Context, pool, volumeName string) ([]byte, error) {
 	return nil, errors.New("not implemented")
 }

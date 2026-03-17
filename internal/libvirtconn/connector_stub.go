@@ -86,6 +86,9 @@ type Connector interface {
 	CreateVolumeFromXML(ctx context.Context, pool string, xml string) (StorageVolumeInfo, error)
 	CloneVolume(ctx context.Context, pool string, sourceName string, targetName string) error
 
+	CreateStoragePoolFromXML(ctx context.Context, xml string) (StoragePoolInfo, error)
+	CreateNetworkFromXML(ctx context.Context, xml string) (NetworkInfo, error)
+
 	CopyVolume(ctx context.Context, pool string, volumeName string) ([]byte, error)
 	CreateVolumeFromBytes(ctx context.Context, pool string, name string, data []byte, format string) (StorageVolumeInfo, error)
 

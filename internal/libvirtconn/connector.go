@@ -90,6 +90,9 @@ type Connector interface {
 	CreateVolumeFromXML(ctx context.Context, pool string, xml string) (StorageVolumeInfo, error)
 	CloneVolume(ctx context.Context, pool string, sourceName string, targetName string) error
 
+	CreateStoragePoolFromXML(ctx context.Context, xml string) (StoragePoolInfo, error)
+	CreateNetworkFromXML(ctx context.Context, xml string) (NetworkInfo, error)
+
 	// CopyVolume downloads a volume and returns its bytes. Used for cross-host/cross-pool clone.
 	CopyVolume(ctx context.Context, pool string, volumeName string) ([]byte, error)
 	// CreateVolumeFromBytes creates a volume and uploads data. Format is "qcow2" or "raw".
@@ -610,6 +613,78 @@ func (c *connector) CreateVolumeFromXML(ctx context.Context, poolName string, xm
 		Name:     name,
 		Path:     path,
 		Capacity: info.Capacity,
+	}, nil
+}
+
+func (c *connector) CreateStoragePoolFromXML(ctx context.Context, xml string) (StoragePoolInfo, error) {
+	if err := checkContext(ctx); err != nil {
+		return StoragePoolInfo{}, err
+	}
+	if strings.TrimSpace(xml) == "" {
+		return StoragePoolInfo{}, c.wrapErr("create storage pool", fmt.Errorf("pool XML is required"))
+	}
+
+	pool, err := c.conn.StoragePoolCreateXML(xml, 0)
+	if err != nil {
+		return StoragePoolInfo{}, c.wrapErr("create storage pool from XML", err)
+	}
+	defer func() {
+		_ = pool.Free()
+	}()
+
+	name, err := pool.GetName()
+	if err != nil {
+		return StoragePoolInfo{}, c.wrapErr("read created pool name", err)
+	}
+	uuid, err := pool.GetUUIDString()
+	if err != nil {
+		return StoragePoolInfo{}, c.wrapErr("read created pool uuid", err)
+	}
+	active, err := pool.IsActive()
+	if err != nil {
+		return StoragePoolInfo{}, c.wrapErr("read created pool state", err)
+	}
+
+	return StoragePoolInfo{
+		Name:   name,
+		UUID:   uuid,
+		Active: active,
+	}, nil
+}
+
+func (c *connector) CreateNetworkFromXML(ctx context.Context, xml string) (NetworkInfo, error) {
+	if err := checkContext(ctx); err != nil {
+		return NetworkInfo{}, err
+	}
+	if strings.TrimSpace(xml) == "" {
+		return NetworkInfo{}, c.wrapErr("create network", fmt.Errorf("network XML is required"))
+	}
+
+	network, err := c.conn.NetworkCreateXML(xml)
+	if err != nil {
+		return NetworkInfo{}, c.wrapErr("create network from XML", err)
+	}
+	defer func() {
+		_ = network.Free()
+	}()
+
+	name, err := network.GetName()
+	if err != nil {
+		return NetworkInfo{}, c.wrapErr("read created network name", err)
+	}
+	uuid, err := network.GetUUIDString()
+	if err != nil {
+		return NetworkInfo{}, c.wrapErr("read created network uuid", err)
+	}
+	active, err := network.IsActive()
+	if err != nil {
+		return NetworkInfo{}, c.wrapErr("read created network state", err)
+	}
+
+	return NetworkInfo{
+		Name:   name,
+		UUID:   uuid,
+		Active: active,
 	}, nil
 }
 

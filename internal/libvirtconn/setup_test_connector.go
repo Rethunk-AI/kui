@@ -82,6 +82,12 @@ func (c *setupTestConnector) CreateVolumeFromXML(ctx context.Context, pool, xml 
 func (c *setupTestConnector) CloneVolume(ctx context.Context, pool, sourceName, targetName string) error {
 	return errors.New("setup test connector: CloneVolume not implemented")
 }
+func (c *setupTestConnector) CreateStoragePoolFromXML(ctx context.Context, xml string) (StoragePoolInfo, error) {
+	return StoragePoolInfo{}, errors.New("setup test connector: CreateStoragePoolFromXML not implemented")
+}
+func (c *setupTestConnector) CreateNetworkFromXML(ctx context.Context, xml string) (NetworkInfo, error) {
+	return NetworkInfo{}, errors.New("setup test connector: CreateNetworkFromXML not implemented")
+}
 func (c *setupTestConnector) CopyVolume(ctx context.Context, pool, volumeName string) ([]byte, error) {
 	return nil, errors.New("setup test connector: CopyVolume not implemented")
 }

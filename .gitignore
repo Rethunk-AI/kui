@@ -3,6 +3,7 @@ coverage.out
 coverage.html
 web/coverage/
 web/node_modules/
+web/package-lock.json
 web/.yarn/
 web/.pnp.*
 web/dist/

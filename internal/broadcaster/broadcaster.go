@@ -57,6 +57,10 @@ func (b *Broadcaster) Subscribe(ctx context.Context) *Subscription {
 	}
 
 	// MVP: emit placeholder event on connect so clients can verify the stream.
+	if ctx.Err() != nil {
+		done()
+		return &Subscription{C: ch, done: nil}
+	}
 	select {
 	case ch <- Event{Type: "host.online", Data: map[string]string{"host_id": "kui"}}:
 	case <-ctx.Done():

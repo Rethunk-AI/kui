@@ -90,6 +90,8 @@ export interface VMListProps {
   onOpenConsole?: (vm: VM) => void;
   onOpenCreateModal?: () => void;
   onOpenCloneModal?: (vm: VM) => void;
+  /** Called when selection changes (arrow keys or click). Parent stores selection for shortcuts. */
+  onRowSelect?: (vm: VM, index: number) => void;
 }
 
 export function renderVMList(
@@ -104,6 +106,7 @@ export function renderVMList(
     onOpenConsole,
     onOpenCreateModal,
     onOpenCloneModal,
+    onRowSelect,
   } = props;
 
   const vmListEl = document.createElement("div");
@@ -132,17 +135,64 @@ export function renderVMList(
 
   if (data.vms.length > 0) {
     const grouped = groupVMs(data.vms, groupBy);
+    const flatVMs: VM[] = [];
+    for (const [, vms] of grouped) {
+      flatVMs.push(...vms);
+    }
+
+    const listboxContainer = document.createElement("div");
+    listboxContainer.className = "vm-list__listbox";
+    listboxContainer.setAttribute("role", "listbox");
+    listboxContainer.setAttribute("aria-label", "Virtual machines");
+    listboxContainer.tabIndex = -1;
+
+    let selectedIndex = 0;
+    const optionElements: HTMLElement[] = [];
+
+    function setSelection(index: number): void {
+      const newIndex = Math.max(0, Math.min(index, flatVMs.length - 1));
+      if (newIndex === selectedIndex) return;
+      selectedIndex = newIndex;
+      for (let i = 0; i < optionElements.length; i++) {
+        const el = optionElements[i];
+        const selected = i === selectedIndex;
+        el.setAttribute("aria-selected", String(selected));
+        el.setAttribute("tabindex", selected ? "0" : "-1");
+      }
+      onRowSelect?.(flatVMs[selectedIndex], selectedIndex);
+    }
+
+    listboxContainer.addEventListener("keydown", (ev) => {
+      if (!listboxContainer.contains(document.activeElement)) return;
+      if (ev.key === "ArrowDown") {
+        ev.preventDefault();
+        setSelection(selectedIndex + 1);
+        optionElements[selectedIndex]?.focus();
+      } else if (ev.key === "ArrowUp") {
+        ev.preventDefault();
+        setSelection(selectedIndex - 1);
+        optionElements[selectedIndex]?.focus();
+      }
+    });
+
     for (const [key, vms] of grouped) {
       const header = document.createElement("h3");
       header.className = "vm-list__group-header";
       header.textContent = formatGroupHeader(key);
-      vmListEl.appendChild(header);
+      listboxContainer.appendChild(header);
 
       const ul = document.createElement("ul");
       ul.className = "vm-list__rows";
-      for (const vm of vms) {
+      for (let i = 0; i < vms.length; i++) {
+        const vm = vms[i];
+        const flatIndex = flatVMs.indexOf(vm);
         const li = document.createElement("li");
         li.className = "vm-list__row";
+        li.setAttribute("role", "option");
+        li.setAttribute("aria-selected", String(flatIndex === selectedIndex));
+        li.tabIndex = flatIndex === selectedIndex ? 0 : -1;
+        optionElements.push(li);
+
         const hostStatus = data.hosts[vm.host_id] ?? "unknown";
         const displayName = vm.display_name ?? vm.libvirt_uuid ?? "VM";
         const relTime = getRelativeTimeLabel(vm);
@@ -159,6 +209,12 @@ export function renderVMList(
           </div>
         `;
 
+        li.addEventListener("click", (ev) => {
+          if ((ev.target as HTMLElement).closest("button")) return;
+          setSelection(flatIndex);
+          li.focus();
+        });
+
         const cloneBtn = li.querySelector(".vm-list__btn--clone");
         if (cloneBtn && onOpenCloneModal) {
           cloneBtn.addEventListener("click", () => onOpenCloneModal(vm));
@@ -174,7 +230,13 @@ export function renderVMList(
         }
         ul.appendChild(li);
       }
-      vmListEl.appendChild(ul);
+      listboxContainer.appendChild(ul);
+    }
+
+    vmListEl.appendChild(listboxContainer);
+
+    if (onRowSelect && flatVMs.length > 0) {
+      onRowSelect(flatVMs[0], 0);
     }
   }
 

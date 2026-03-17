@@ -79,3 +79,48 @@ Post-setup-host-validation audit. These are gaps that "any dumbshit would have t
 4. **#4** — FirstRunChecklist copy update.
 5. **#6** — 401/session audit (explore subagent).
 6. **#7, #8** — Template/XML network validation (separate spec if needed).
+
+---
+
+## Setup Wizard & Host Validation (Additional Gaps)
+
+### 9. **Duplicate host IDs — generic backend error**
+- **Where:** `SetupWizard.ts`, `normalizeHosts()` in routes.go
+- **What:** Backend rejects duplicate host IDs via `normalizeHosts` but returns `"invalid host payload"`. User has no idea it's a duplicate-ID problem.
+- **Fix:** Have `normalizeHosts` return a specific error (e.g. `"duplicate host id: local"`); surface in 400 response. Or add frontend pre-validation: check for duplicates before submit and show inline error.
+
+### 10. **qemu+ssh without keyfile — generic backend error**
+- **Where:** `SetupWizard.ts`, `normalizeHosts()` in routes.go
+- **What:** Backend rejects `qemu+ssh://` URIs with empty keyfile but returns `"invalid host payload"`. User doesn't know keyfile is required.
+- **Fix:** Return specific error from `normalizeHosts` (e.g. `"Host X: keyfile required for qemu+ssh URI"`). Or add frontend validation: when URI starts with `qemu+ssh://`, require keyfile and show error before submit.
+
+### 11. **Default host select stale when host ID edited**
+- **Where:** `SetupWizard.ts` — `updateDefaultHostSelect()`
+- **What:** `updateDefaultHostSelect` runs only on add/remove host. If user edits a host ID in place (e.g. "local" → "host1"), the default-host dropdown stays stale. User can submit with `default_host: "local"` while hosts have `"host1"` — backend rejects with "default_host must be in hosts", but the dropdown is misleading.
+- **Fix:** Add `input` or `change` listener on host ID fields to call `updateDefaultHostSelect()` when IDs change.
+
+### 12. **No password confirmation**
+- **Where:** `SetupWizard.ts` — admin password field
+- **What:** Single password field. User can typo and lock themselves out. No confirmation step.
+- **Fix:** Add password confirmation field; validate match before submit. Optional: minimum length hint (backend accepts any non-empty).
+
+### 13. **Validate host doesn't check qemu+ssh + keyfile**
+- **Where:** `validateHost()` in routes.go
+- **What:** User can click "Validate host" with `qemu+ssh://user@host/system` and empty keyfile. Backend connects via libvirt; connection fails. Error is sanitized but generic (e.g. connection refused, auth failed). No upfront "keyfile required for SSH" message.
+- **Fix:** Either (a) add pre-check in validateHost: if URI starts with `qemu+ssh://` and keyfile empty, return `valid: false, error: "keyfile required for qemu+ssh URI"` before connecting, or (b) rely on frontend validation (#10) to block submit; validate-host stays as-is.
+
+### 14. **Empty host ID**
+- **Where:** `normalizeHosts`, `SetupWizard.ts`
+- **What:** Backend rejects empty host ID. Frontend uses `inps.id.value.trim() || \`host-${hosts.length}\`` so we auto-fill. But if user clears the field, we'd send `host-0`, etc. Actually we'd send `host-${hosts.length}` which could collide (e.g. two rows both "host-0" if first is empty). Wait — we iterate rows, so hosts.length increments. First row empty → id = "host-0". Second row empty → id = "host-1". No collision. But "host-0" might not be what user wants. Low severity.
+- **Fix:** Optional: show inline validation "Host ID is required" when empty. Backend already rejects.
+
+### Summary (Setup/Host)
+
+| #  | Gap                               | Severity | Effort |
+|----|-----------------------------------|----------|--------|
+| 9  | Duplicate host IDs — generic error| High     | Small  |
+| 10 | qemu+ssh no keyfile — generic     | High     | Small  |
+| 11 | Default host select stale         | Medium   | Trivial|
+| 12 | No password confirmation          | Medium   | Small  |
+| 13 | Validate host: qemu+ssh keyfile   | Medium   | Small  |
+| 14 | Empty host ID (optional)          | Low      | Trivial|

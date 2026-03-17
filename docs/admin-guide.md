@@ -78,11 +78,42 @@ Frontend: `corepack enable` (once), then `cd web && corepack yarn install && cor
 
 ---
 
+## Host Provisioning
+
+When a libvirt host has no storage pools or no networks, KUI can provision them. This is needed when:
+
+- **Setup wizard** — validate-host returns "no storage pools" or "no networks".
+- **Create VM** — the selected host has no pools or networks in the dropdown.
+
+### Provisioning flow
+
+1. **Audit** — KUI shows what would be created (pool path, network name/subnet).
+2. **Review** — User confirms the proposed configuration.
+3. **Execute** — KUI creates the pool and/or network.
+
+### Default paths
+
+| Condition | Pool path |
+|-----------|-----------|
+| `/var/lib/libvirt/images` exists and is non-empty | Use existing path |
+| `/var/lib/libvirt/images` missing or empty | Propose `/var/lib/kui/images`; create dir before pool define |
+
+### Permissions
+
+The KUI process must be able to create `/var/lib/kui` and subdirs (e.g. `/var/lib/kui/images`). Typically run as `root` or a dedicated `kui` user with appropriate permissions in systemd.
+
+### Local-only (MVP)
+
+Provisioning is supported only for **local hosts** (`qemu:///system`). Remote hosts (`qemu+ssh://`) return 400 with "remote host provisioning not supported in this version". Remote provisioning is planned for a future release.
+
+---
+
 ## Troubleshooting
 
 | Issue | Check |
 |-------|-------|
 | Setup wizard not shown | Config exists at `KUI_CONFIG` (default `/etc/kui/config.yaml`). Remove or rename to re-run setup. |
+| Provision fails (permission denied) | KUI must create `/var/lib/kui/images` when libvirt default path is empty. Ensure KUI runs as root or has write access. |
 | Host unreachable | Verify `libvirtd` on remote host; SSH key in `authorized_keys`; `nc` installed. See [spec-libvirt-connector](../specs/done/spec-libvirt-connector/spec.md). |
 | Console (VNC/serial) fails | Local hosts only in MVP; remote requires KUI on same host as libvirt or tunnel. See [deployment.md](deployment.md) for WebSocket proxy setup. |
 | WebSocket/SSE not working | Reverse proxy must forward `Upgrade` and `Connection` headers; disable buffering for SSE. See [deployment.md](deployment.md). |

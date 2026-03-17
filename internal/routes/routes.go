@@ -35,6 +35,7 @@ import (
 	"github.com/kui/kui/internal/eventsource"
 	"github.com/kui/kui/internal/libvirtconn"
 	mw "github.com/kui/kui/internal/middleware"
+	"github.com/kui/kui/internal/provision"
 	"github.com/kui/kui/internal/template"
 	"github.com/kui/kui/web"
 )
@@ -112,6 +113,53 @@ type validateHostRequest struct {
 type validateHostResponse struct {
 	Valid bool   `json:"valid"`
 	Error string `json:"error,omitempty"`
+}
+
+type provisionHostSetupRequest struct {
+	HostID  string `json:"host_id"`
+	URI     string `json:"uri"`
+	Keyfile string `json:"keyfile"`
+	DryRun  bool   `json:"dry_run"`
+}
+
+type provisionHostSetupAuditResponse struct {
+	Audit     *provisionAudit `json:"audit"`
+	LocalOnly bool            `json:"local_only"`
+}
+
+type provisionAudit struct {
+	Pool    *provisionAuditPool    `json:"pool,omitempty"`
+	Network *provisionAuditNetwork `json:"network,omitempty"`
+}
+
+type provisionAuditPool struct {
+	Path string `json:"path"`
+	Type string `json:"type"`
+	Name string `json:"name"`
+}
+
+type provisionAuditNetwork struct {
+	Name   string `json:"name"`
+	Subnet string `json:"subnet"`
+	Type   string `json:"type"`
+}
+
+type provisionHostResultResponse struct {
+	Pool    provisionResult `json:"pool"`
+	Network provisionResult `json:"network"`
+}
+
+type provisionResult struct {
+	Created bool   `json:"created"`
+	Name    string `json:"name,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+type provisionHostRequest struct {
+	DryRun        bool   `json:"dry_run"`
+	PoolPath      string `json:"pool_path"`
+	NetworkName   string `json:"network_name"`
+	NetworkSubnet string `json:"network_subnet"`
 }
 
 type listViewOptions struct {
@@ -235,6 +283,7 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Post("/api/auth/login", state.login(sessionTimeout, secret, secureCookies))
 	router.Get("/api/setup/status", state.setupStatus())
 	router.Post("/api/setup/validate-host", state.validateHost())
+	router.Post("/api/setup/provision-host", state.provisionHostSetup())
 	router.Post("/api/setup/complete", state.setupComplete())
 	router.Post("/api/auth/logout", state.logout())
 	router.Get("/api/auth/me", state.me())
@@ -246,6 +295,7 @@ func NewRouter(opts RouterOptions) http.Handler {
 	router.Get("/api/hosts/{host_id}/pools", state.getHostPools())
 	router.Get("/api/hosts/{host_id}/pools/{pool_name}/volumes", state.getHostPoolVolumes())
 	router.Get("/api/hosts/{host_id}/networks", state.getHostNetworks())
+	router.Post("/api/hosts/{host_id}/provision", state.provisionHost())
 
 	router.Get("/api/hosts/{host_id}/vms/{libvirt_uuid}", state.getVMDetail())
 	router.Get("/api/hosts/{host_id}/vms/{libvirt_uuid}/domain-xml", state.getDomainXML())
@@ -3112,9 +3162,17 @@ func (r *routerState) setupConnect(ctx context.Context, uri, keyfile string) (li
 
 func (r *routerState) validateHost() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		if r.configPresent {
-			writeJSONError(w, http.StatusForbidden, "validate-host is only available during setup")
-			return
+		// Block only when setup is complete (same logic as setupStatus)
+		if r.configPresent && r.config != nil && r.db != nil {
+			hasAdmin, err := r.hasAdminUser(req.Context())
+			if err != nil {
+				writeJSONError(w, http.StatusInternalServerError, "failed to evaluate setup status")
+				return
+			}
+			if hasAdmin {
+				writeJSONError(w, http.StatusForbidden, "validate-host is only available during setup")
+				return
+			}
 		}
 		var payload validateHostRequest
 		if err := decodeJSON(req.Body, &payload); err != nil {
@@ -3194,6 +3252,285 @@ func (r *routerState) validateHost() http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, validateHostResponse{
 			Valid: true,
+		})
+	}
+}
+
+func isRemoteURI(uri string) bool {
+	u := strings.TrimSpace(uri)
+	return strings.HasPrefix(u, "qemu+ssh://") || strings.HasPrefix(u, "qemu+ssh:")
+}
+
+func (r *routerState) provisionHostSetup() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if r.configPresent && r.config != nil && r.db != nil {
+			hasAdmin, err := r.hasAdminUser(req.Context())
+			if err != nil {
+				writeJSONError(w, http.StatusInternalServerError, "failed to evaluate setup status")
+				return
+			}
+			if hasAdmin {
+				writeJSONError(w, http.StatusForbidden, "provision-host is only available during setup")
+				return
+			}
+		}
+		var payload provisionHostSetupRequest
+		if err := decodeJSON(req.Body, &payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if strings.TrimSpace(payload.URI) == "" {
+			writeJSONError(w, http.StatusBadRequest, "uri required")
+			return
+		}
+		if isRemoteURI(payload.URI) {
+			writeJSONError(w, http.StatusBadRequest, "remote host provisioning not supported in this version")
+			return
+		}
+
+		conn, err := r.setupConnect(req.Context(), payload.URI, payload.Keyfile)
+		if err != nil {
+			r.logger.Debug("provision-host connect failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, sanitizeValidationError(err.Error()))
+			return
+		}
+		defer conn.Close()
+
+		pools, err := conn.ListPools(req.Context())
+		if err != nil {
+			r.logger.Debug("provision-host list pools failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, sanitizeValidationError(err.Error()))
+			return
+		}
+		networks, err := conn.ListNetworks(req.Context())
+		if err != nil {
+			r.logger.Debug("provision-host list networks failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, sanitizeValidationError(err.Error()))
+			return
+		}
+
+		needPool := len(pools) == 0
+		needNetwork := len(networks) == 0
+		if !needPool && !needNetwork {
+			writeJSON(w, http.StatusOK, provisionHostSetupAuditResponse{
+				Audit:     nil,
+				LocalOnly: true,
+			})
+			return
+		}
+
+		poolPathResult, err := provision.SelectPoolPath()
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		poolPath := poolPathResult.Path
+		networkName := provision.DefaultNetworkName
+		networkSubnet := provision.DefaultNetworkSubnet
+
+		if payload.DryRun {
+			auditObj := &provisionAudit{}
+			if needPool {
+				auditObj.Pool = &provisionAuditPool{
+					Path: poolPath,
+					Type: "dir",
+					Name: provision.DefaultPoolName,
+				}
+			}
+			if needNetwork {
+				auditObj.Network = &provisionAuditNetwork{
+					Name:   networkName,
+					Subnet: networkSubnet,
+					Type:   "nat",
+				}
+			}
+			writeJSON(w, http.StatusOK, provisionHostSetupAuditResponse{
+				Audit:     auditObj,
+				LocalOnly: true,
+			})
+			return
+		}
+
+		// Execute: create pool and/or network
+		var poolResult, networkResult provisionResult
+		if needPool {
+			if err := provision.EnsurePoolDir(poolPath); err != nil {
+				poolResult = provisionResult{Created: false, Error: err.Error()}
+			} else {
+				poolXML, err := provision.BuildDirPoolXML(provision.DefaultPoolName, poolPath)
+				if err != nil {
+					poolResult = provisionResult{Created: false, Error: err.Error()}
+				} else {
+					_, err = conn.CreateStoragePoolFromXML(req.Context(), poolXML)
+					if err != nil {
+						poolResult = provisionResult{Created: false, Name: provision.DefaultPoolName, Error: sanitizeValidationError(err.Error())}
+					} else {
+						poolResult = provisionResult{Created: true, Name: provision.DefaultPoolName}
+					}
+				}
+			}
+		}
+		if needNetwork {
+			networkXML, err := provision.BuildNATNetworkXML(networkName, networkSubnet)
+			if err != nil {
+				networkResult = provisionResult{Created: false, Error: err.Error()}
+			} else {
+				_, err = conn.CreateNetworkFromXML(req.Context(), networkXML)
+				if err != nil {
+					networkResult = provisionResult{Created: false, Name: networkName, Error: sanitizeValidationError(err.Error())}
+				} else {
+					networkResult = provisionResult{Created: true, Name: networkName}
+				}
+			}
+		}
+
+		writeJSON(w, http.StatusOK, provisionHostResultResponse{
+			Pool:    poolResult,
+			Network: networkResult,
+		})
+	}
+}
+
+func (r *routerState) provisionHost() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		hostID := chi.URLParam(req, "host_id")
+		if hostID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id required")
+			return
+		}
+		if r.config == nil || len(r.config.Hosts) == 0 {
+			writeJSONError(w, http.StatusBadRequest, "host not found")
+			return
+		}
+		var host *config.Host
+		for i := range r.config.Hosts {
+			if r.config.Hosts[i].ID == hostID {
+				host = &r.config.Hosts[i]
+				break
+			}
+		}
+		if host == nil {
+			writeJSONError(w, http.StatusBadRequest, "host not found")
+			return
+		}
+		if isRemoteURI(host.URI) {
+			writeJSONError(w, http.StatusBadRequest, "remote host provisioning not supported in this version")
+			return
+		}
+
+		var payload provisionHostRequest
+		if err := decodeJSON(req.Body, &payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		conn, err := r.connectorProvider(req.Context(), hostID)
+		if err != nil {
+			r.logger.Debug("provision-host connect failed", "host_id", hostID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, sanitizeValidationError(err.Error()))
+			return
+		}
+		defer conn.Close()
+
+		pools, err := conn.ListPools(req.Context())
+		if err != nil {
+			r.logger.Debug("provision-host list pools failed", "host_id", hostID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, sanitizeValidationError(err.Error()))
+			return
+		}
+		networks, err := conn.ListNetworks(req.Context())
+		if err != nil {
+			r.logger.Debug("provision-host list networks failed", "host_id", hostID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, sanitizeValidationError(err.Error()))
+			return
+		}
+
+		needPool := len(pools) == 0
+		needNetwork := len(networks) == 0
+		if !needPool && !needNetwork {
+			writeJSON(w, http.StatusOK, provisionHostSetupAuditResponse{
+				Audit:     nil,
+				LocalOnly: true,
+			})
+			return
+		}
+
+		poolPath := payload.PoolPath
+		if poolPath == "" {
+			pathResult, err := provision.SelectPoolPath()
+			if err != nil {
+				writeJSONError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			poolPath = pathResult.Path
+		}
+		networkName := payload.NetworkName
+		if networkName == "" {
+			networkName = provision.DefaultNetworkName
+		}
+		networkSubnet := payload.NetworkSubnet
+		if networkSubnet == "" {
+			networkSubnet = provision.DefaultNetworkSubnet
+		}
+
+		if payload.DryRun {
+			auditObj := &provisionAudit{}
+			if needPool {
+				auditObj.Pool = &provisionAuditPool{
+					Path: poolPath,
+					Type: "dir",
+					Name: provision.DefaultPoolName,
+				}
+			}
+			if needNetwork {
+				auditObj.Network = &provisionAuditNetwork{
+					Name:   networkName,
+					Subnet: networkSubnet,
+					Type:   "nat",
+				}
+			}
+			writeJSON(w, http.StatusOK, provisionHostSetupAuditResponse{
+				Audit:     auditObj,
+				LocalOnly: true,
+			})
+			return
+		}
+
+		var poolResult, networkResult provisionResult
+		if needPool {
+			if err := provision.EnsurePoolDir(poolPath); err != nil {
+				poolResult = provisionResult{Created: false, Error: err.Error()}
+			} else {
+				poolXML, err := provision.BuildDirPoolXML(provision.DefaultPoolName, poolPath)
+				if err != nil {
+					poolResult = provisionResult{Created: false, Error: err.Error()}
+				} else {
+					_, err = conn.CreateStoragePoolFromXML(req.Context(), poolXML)
+					if err != nil {
+						poolResult = provisionResult{Created: false, Name: provision.DefaultPoolName, Error: sanitizeValidationError(err.Error())}
+					} else {
+						poolResult = provisionResult{Created: true, Name: provision.DefaultPoolName}
+					}
+				}
+			}
+		}
+		if needNetwork {
+			networkXML, err := provision.BuildNATNetworkXML(networkName, networkSubnet)
+			if err != nil {
+				networkResult = provisionResult{Created: false, Error: err.Error()}
+			} else {
+				_, err = conn.CreateNetworkFromXML(req.Context(), networkXML)
+				if err != nil {
+					networkResult = provisionResult{Created: false, Name: networkName, Error: sanitizeValidationError(err.Error())}
+				} else {
+					networkResult = provisionResult{Created: true, Name: networkName}
+				}
+			}
+		}
+
+		writeJSON(w, http.StatusOK, provisionHostResultResponse{
+			Pool:    poolResult,
+			Network: networkResult,
 		})
 	}
 }

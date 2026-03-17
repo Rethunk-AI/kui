@@ -81,6 +81,59 @@ export interface SetupCompleteRequest {
   default_host: string;
 }
 
+export interface ProvisionHostRequest {
+  host_id: string;
+  uri: string;
+  keyfile: string;
+  dry_run: boolean;
+}
+
+export interface ProvisionHostAuditResponse {
+  audit: {
+    pool?: { path: string; type: string; name: string };
+    network?: { name: string; subnet: string; type: string };
+  } | null;
+  local_only: boolean;
+}
+
+export interface ProvisionHostResultResponse {
+  pool: { created: boolean; name?: string; error?: string };
+  network: { created: boolean; name?: string; error?: string };
+}
+
+export async function provisionHost(req: ProvisionHostRequest): Promise<
+  | ProvisionHostAuditResponse
+  | ProvisionHostResultResponse
+> {
+  return setupFetch<ProvisionHostAuditResponse | ProvisionHostResultResponse>(
+    "/setup/provision-host",
+    {
+      method: "POST",
+      body: JSON.stringify(req),
+    }
+  );
+}
+
+export interface ProvisionHostPostSetupRequest {
+  dry_run?: boolean;
+  pool_path?: string;
+  network_name?: string;
+  network_subnet?: string;
+}
+
+export async function provisionHostPostSetup(
+  hostId: string,
+  req?: ProvisionHostPostSetupRequest
+): Promise<ProvisionHostAuditResponse | ProvisionHostResultResponse> {
+  return apiFetch<ProvisionHostAuditResponse | ProvisionHostResultResponse>(
+    `/hosts/${encodeURIComponent(hostId)}/provision`,
+    {
+      method: "POST",
+      body: JSON.stringify(req ?? {}),
+    }
+  );
+}
+
 async function setupFetch<T>(
   path: string,
   opts?: RequestInit & { method?: string; body?: string }

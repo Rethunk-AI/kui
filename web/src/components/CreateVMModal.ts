@@ -8,9 +8,11 @@ import {
   fetchHostNetworks,
   fetchHostPools,
   fetchHostPoolVolumes,
+  provisionHostPostSetup,
   type Host,
   type Network,
   type Pool,
+  type ProvisionHostResultResponse,
   type Volume,
 } from "../lib/api";
 import { addAlert } from "../lib/alerts";
@@ -80,6 +82,11 @@ export function renderCreateVMModal(
   });
   form.appendChild(hostSelectorContainer);
 
+  const provisionSection = document.createElement("div");
+  provisionSection.className = "modal__field create-vm-provision-section";
+  provisionSection.style.display = "none";
+  form.appendChild(provisionSection);
+
   const selectedHostIdRef = { current: selectedHostId };
 
   const poolSelect = document.createElement("select");
@@ -99,7 +106,7 @@ export function renderCreateVMModal(
   poolHint.className = "modal__hint";
   poolHint.id = "create-vm-pool-hint";
   poolHint.style.display = "none";
-  poolHint.textContent = "No storage pools on this host. Create one in virt-manager or virsh.";
+  poolHint.textContent = "No storage pools on this host.";
   poolField.appendChild(poolHint);
   form.appendChild(poolField);
 
@@ -230,17 +237,25 @@ export function renderCreateVMModal(
         const defaultNet = networks.find((n) => n.name === "default") ?? networks[0];
         networkSelect.value = defaultNet.name;
       }
+      const needsProvision = pools.length === 0 || networks.length === 0;
       if (pools.length === 0) {
         poolHint.style.display = "";
         submitBtn.disabled = true;
       } else {
         poolHint.style.display = "none";
-        submitBtn.disabled = false;
+        if (networks.length > 0) submitBtn.disabled = false;
+      }
+      if (needsProvision) {
+        renderProvisionSection(hostId);
+      } else {
+        provisionSection.style.display = "none";
+        provisionSection.innerHTML = "";
       }
     } catch (err) {
       poolSelect.innerHTML = "";
       poolSelect.appendChild(createOption("", "Failed to load"));
       poolHint.style.display = "none";
+      provisionSection.style.display = "none";
       submitBtn.disabled = true;
       if (err instanceof ApiError && err.status === 401) return;
       addAlert(
@@ -249,6 +264,100 @@ export function renderCreateVMModal(
         err instanceof ApiError ? String(err.status) : undefined
       );
     }
+  }
+
+  function renderProvisionSection(hostId: string): void {
+    provisionSection.style.display = "";
+    provisionSection.innerHTML = "";
+    const msg = document.createElement("p");
+    msg.className = "modal__hint";
+    msg.textContent =
+      pools.length === 0 && networks.length === 0
+        ? "This host has no storage pools or networks. Provision to create them."
+        : pools.length === 0
+          ? "This host has no storage pools. Provision to create one."
+          : "This host has no networks. Provision to create one.";
+    provisionSection.appendChild(msg);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "create-vm-provision-btn";
+    btn.textContent = "Provision host";
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "Loading…";
+      try {
+        const auditRes = await provisionHostPostSetup(hostId, { dry_run: true });
+        if (!("audit" in auditRes) || !auditRes.audit) {
+          btn.disabled = false;
+          btn.textContent = "Provision host";
+          return;
+        }
+        provisionSection.innerHTML = "";
+        const details = document.createElement("div");
+        details.className = "create-vm-provision-details";
+        if (auditRes.audit.pool) {
+          const p = document.createElement("p");
+          p.textContent = `Pool: ${auditRes.audit.pool.path} (${auditRes.audit.pool.type})`;
+          details.appendChild(p);
+        }
+        if (auditRes.audit.network) {
+          const p = document.createElement("p");
+          p.textContent = `Network: ${auditRes.audit.network.name} (${auditRes.audit.network.subnet})`;
+          details.appendChild(p);
+        }
+        provisionSection.appendChild(details);
+        const execBtn = document.createElement("button");
+        execBtn.type = "button";
+        execBtn.className = "create-vm-provision-exec";
+        execBtn.textContent = "Provision";
+        execBtn.addEventListener("click", async () => {
+          execBtn.disabled = true;
+          execBtn.textContent = "Provisioning…";
+          try {
+            const execRes = await provisionHostPostSetup(hostId, {
+              dry_run: false,
+            });
+            if ("pool" in execRes || "network" in execRes) {
+              const res = execRes as ProvisionHostResultResponse;
+              const needPool = pools.length === 0;
+              const needNetwork = networks.length === 0;
+              const poolOk = !needPool || res.pool?.created;
+              const netOk = !needNetwork || res.network?.created;
+              if (poolOk && netOk) {
+                await loadPoolsAndNetworks(hostId);
+              } else {
+                const parts: string[] = [];
+                if (needPool && !res.pool?.created)
+                  parts.push(`Pool: ${res.pool?.error ?? "failed"}`);
+                if (needNetwork && !res.network?.created)
+                  parts.push(`Network: ${res.network?.error ?? "failed"}`);
+                formError.textContent = "Partial failure: " + parts.join("; ");
+                formError.style.display = "";
+                execBtn.disabled = false;
+                execBtn.textContent = "Retry";
+              }
+            }
+          } catch (err) {
+            execBtn.disabled = false;
+            execBtn.textContent = "Provision";
+            formError.textContent =
+              err instanceof ApiError ? err.message : "Provision failed";
+            formError.style.display = "";
+          }
+        });
+        provisionSection.appendChild(execBtn);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = "Provision host";
+        if (err instanceof ApiError && err.status === 401) return;
+        addAlert(
+          "api_error",
+          err instanceof ApiError ? err.message : "Failed to load provision audit",
+          err instanceof ApiError ? String(err.status) : undefined
+        );
+      }
+    });
+    provisionSection.appendChild(btn);
   }
 
   async function loadVolumes(hostId: string, poolName: string): Promise<void> {

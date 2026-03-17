@@ -4,8 +4,11 @@
  */
 import {
   ApiError,
+  provisionHost,
   setupComplete,
   validateHost,
+  type ProvisionHostAuditResponse,
+  type ProvisionHostResultResponse,
   type SetupCompleteRequest,
 } from "../lib/api";
 
@@ -88,6 +91,7 @@ export function renderSetupWizard(
       <input id="setup-host-keyfile-${idx}" type="text" placeholder="/path/to/key" aria-describedby="setup-error" />
       <button type="button" class="setup-validate-btn">Validate host</button>
       <p class="setup-validate-result" role="status" aria-live="polite"></p>
+      <div class="setup-provision-panel" style="display: none;"></div>
       <button type="button" class="setup-remove-host">Remove</button>
     `;
 
@@ -100,12 +104,50 @@ export function renderSetupWizard(
 
     const validateBtn = row.querySelector(".setup-validate-btn") as HTMLButtonElement;
     const validateResult = row.querySelector(".setup-validate-result") as HTMLParagraphElement;
+    const provisionPanel = row.querySelector(".setup-provision-panel") as HTMLDivElement;
     const removeBtn = row.querySelector(".setup-remove-host") as HTMLButtonElement;
+
+    function needsProvision(error: string | undefined): boolean {
+      if (!error) return false;
+      return (
+        error.includes("no storage pools") || error.includes("no networks")
+      );
+    }
+
+    function renderProvisionPanel(
+      audit: ProvisionHostAuditResponse["audit"],
+      onProvision: (btn: HTMLButtonElement) => void
+    ): void {
+      provisionPanel.innerHTML = "";
+      if (!audit || (!audit.pool && !audit.network)) return;
+      provisionPanel.style.display = "";
+      const details = document.createElement("div");
+      details.className = "setup-provision-details";
+      if (audit.pool) {
+        const p = document.createElement("p");
+        p.textContent = `Pool: ${audit.pool.path} (${audit.pool.type}, ${audit.pool.name})`;
+        details.appendChild(p);
+      }
+      if (audit.network) {
+        const p = document.createElement("p");
+        p.textContent = `Network: ${audit.network.name} (${audit.network.subnet}, ${audit.network.type})`;
+        details.appendChild(p);
+      }
+      provisionPanel.appendChild(details);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "setup-provision-btn";
+      btn.textContent = "Provision";
+      btn.addEventListener("click", () => onProvision(btn));
+      provisionPanel.appendChild(btn);
+    }
 
     validateBtn.addEventListener("click", async () => {
       const hostId = inps.id.value.trim() || "host";
       const uri = inps.uri.value.trim();
       const keyfile = inps.keyfile.value.trim();
+      provisionPanel.style.display = "none";
+      provisionPanel.innerHTML = "";
       if (!uri) {
         validateResult.textContent = "URI is required";
         validateResult.className = "setup-validate-result setup-validate-result--error";
@@ -121,6 +163,86 @@ export function renderSetupWizard(
         } else {
           validateResult.textContent = res.error ?? "Validation failed";
           validateResult.className = "setup-validate-result setup-validate-result--error";
+          if (needsProvision(res.error)) {
+            try {
+              const auditRes = await provisionHost({
+                host_id: hostId,
+                uri,
+                keyfile,
+                dry_run: true,
+              });
+              if ("audit" in auditRes && auditRes.audit) {
+                const needPool = !!auditRes.audit.pool;
+                const needNetwork = !!auditRes.audit.network;
+                renderProvisionPanel(auditRes.audit, async (btn) => {
+                  btn.disabled = true;
+                  btn.textContent = "Provisioning…";
+                  try {
+                    const execRes = await provisionHost({
+                      host_id: hostId,
+                      uri,
+                      keyfile,
+                      dry_run: false,
+                    });
+                    if ("pool" in execRes || "network" in execRes) {
+                      const res = execRes as ProvisionHostResultResponse;
+                      const poolOk = !needPool || res.pool?.created;
+                      const netOk = !needNetwork || res.network?.created;
+                      if (poolOk && netOk) {
+                        provisionPanel.innerHTML = "";
+                        provisionPanel.style.display = "none";
+                        validateResult.textContent = "Validating…";
+                        const revalidate = await validateHost({
+                          host_id: hostId,
+                          uri,
+                          keyfile,
+                        });
+                        if (revalidate.valid) {
+                          validateResult.textContent = "Valid";
+                          validateResult.className =
+                            "setup-validate-result setup-validate-result--success";
+                        } else {
+                          validateResult.textContent =
+                            revalidate.error ?? "Validation failed";
+                        }
+                      } else {
+                        const parts: string[] = [];
+                        if (
+                          "pool" in execRes &&
+                          !(execRes as ProvisionHostResultResponse).pool?.created
+                        ) {
+                          parts.push(
+                            `Pool: ${(execRes as ProvisionHostResultResponse).pool?.error ?? "failed"}`
+                          );
+                        }
+                        if (
+                          "network" in execRes &&
+                          !(execRes as ProvisionHostResultResponse).network?.created
+                        ) {
+                          parts.push(
+                            `Network: ${(execRes as ProvisionHostResultResponse).network?.error ?? "failed"}`
+                          );
+                        }
+                        validateResult.textContent =
+                          "Partial failure: " + parts.join("; ");
+                        btn.disabled = false;
+                        btn.textContent = "Retry";
+                      }
+                    }
+                  } catch (err) {
+                    btn.disabled = false;
+                    btn.textContent = "Provision";
+                    validateResult.textContent =
+                      err instanceof ApiError ? err.message : "Provision failed";
+                    validateResult.className =
+                      "setup-validate-result setup-validate-result--error";
+                  }
+                });
+              }
+            } catch {
+              // ignore audit fetch failure; user can retry validate
+            }
+          }
         }
       } catch (err) {
         const msg = err instanceof ApiError ? err.message : "Validation failed";

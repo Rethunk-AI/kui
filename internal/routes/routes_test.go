@@ -50,12 +50,30 @@ type mockConnector struct {
 	undefineErr      error
 	suspendErr       error
 	resumeErr        error
-	cloneVolErr      error
-	copyVolErr       error
+	cloneVolErr       error
+	copyVolErr        error
 	createVolBytesErr error
+	createPoolErr     error
+	createPoolInfo    libvirtconn.StoragePoolInfo
+	createNetworkErr  error
+	createNetworkInfo libvirtconn.NetworkInfo
 }
 
 func (m *mockConnector) Close() error { return nil }
+
+func (m *mockConnector) CreateStoragePoolFromXML(ctx context.Context, xml string) (libvirtconn.StoragePoolInfo, error) {
+	if m.createPoolErr != nil {
+		return libvirtconn.StoragePoolInfo{}, m.createPoolErr
+	}
+	return m.createPoolInfo, nil
+}
+
+func (m *mockConnector) CreateNetworkFromXML(ctx context.Context, xml string) (libvirtconn.NetworkInfo, error) {
+	if m.createNetworkErr != nil {
+		return libvirtconn.NetworkInfo{}, m.createNetworkErr
+	}
+	return m.createNetworkInfo, nil
+}
 
 func (m *mockConnector) ListDomains(ctx context.Context) ([]libvirtconn.DomainInfo, error) {
 	if m.listDomainsErr != nil {
@@ -594,6 +612,65 @@ jwt_secret: "` + testJWTSecret + `"
 	}
 }
 
+func TestValidateHost_AllowedWhenConfigPresentButNoAdmin(t *testing.T) {
+	// Bug fix: validate-host was blocked when config present, but setup can be
+	// required (no_admin or db_missing). Allow when setup not complete.
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	// No admin user — setup required (no_admin). validate-host must be allowed.
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        loaded,
+		ConfigPath:    configPath,
+		ConfigPresent: true,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+		SetupConnectFunc: func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) {
+			return libvirtconn.SetupTestConnector(), nil
+		},
+	})
+
+	payload := map[string]string{"host_id": "local", "uri": "qemu:///system", "keyfile": ""}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/validate-host", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 when setup required (config+db but no admin), got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Valid bool   `json:"valid"`
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.Valid {
+		t.Errorf("expected valid=true from mock connector, got valid=%v error=%q", body.Valid, body.Error)
+	}
+}
+
 func TestValidateHost_SetupOnly(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
@@ -616,6 +693,16 @@ jwt_secret: "` + testJWTSecret + `"
 	}
 	defer database.Close()
 
+	// Setup complete = config + db + admin. Only then is validate-host blocked.
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, err = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("insert admin: %v", err)
+	}
+
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
 		DB:            database,
@@ -633,7 +720,7 @@ jwt_secret: "` + testJWTSecret + `"
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 when config present, got %d", rec.Code)
+		t.Fatalf("expected 403 when setup complete (config+db+admin), got %d", rec.Code)
 	}
 }
 
@@ -3336,6 +3423,394 @@ func TestValidateHost_NoNetworks(t *testing.T) {
 	}
 	if !strings.Contains(body.Error, "no networks") {
 		t.Errorf("expected error to contain 'no networks', got %q", body.Error)
+	}
+}
+
+// --- provision-host setup ---
+
+func TestProvisionHostSetup_RejectsRemoteURI(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        nil,
+		ConfigPath:    filepath.Join(tempDir, "nonexistent.yaml"),
+		ConfigPresent: false,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	payload := map[string]any{
+		"host_id": "remote",
+		"uri":    "qemu+ssh://user@host/system",
+		"keyfile": "/path/to/key",
+		"dry_run": true,
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/provision-host", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.Contains(body.Error, "remote host provisioning not supported") {
+		t.Errorf("expected error to contain 'remote host provisioning not supported', got %q", body.Error)
+	}
+}
+
+func TestProvisionHostSetup_DryRunReturnsAudit(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	mock := &mockConnector{
+		pools:    nil,
+		networks: nil,
+	}
+	handler := NewRouter(RouterOptions{
+		Logger:           nil,
+		DB:               database,
+		Config:           nil,
+		ConfigPath:       filepath.Join(tempDir, "nonexistent.yaml"),
+		ConfigPresent:    false,
+		DBPath:           filepath.Join(tempDir, "kui.db"),
+		GitPath:          tempDir,
+		SetupConnectFunc: func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) { return mock, nil },
+	})
+
+	payload := map[string]any{
+		"host_id": "local",
+		"uri":    "qemu:///system",
+		"keyfile": "",
+		"dry_run": true,
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/provision-host", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Audit     *struct {
+			Pool    *struct{ Path, Type, Name string } `json:"pool"`
+			Network *struct{ Name, Subnet, Type string } `json:"network"`
+		} `json:"audit"`
+		LocalOnly bool `json:"local_only"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Audit == nil {
+		t.Error("expected audit in response")
+	}
+	if body.Audit != nil && body.Audit.Pool == nil {
+		t.Error("expected pool in audit")
+	}
+	if body.Audit != nil && body.Audit.Network == nil {
+		t.Error("expected network in audit")
+	}
+	if !body.LocalOnly {
+		t.Error("expected local_only=true")
+	}
+}
+
+func TestProvisionHostSetup_ExecuteCreatesPoolAndNetwork(t *testing.T) {
+	tempDir := t.TempDir()
+	poolPath := filepath.Join(tempDir, "images")
+	os.Setenv("KUI_TEST_PROVISION_POOL_PATH", poolPath)
+	defer os.Unsetenv("KUI_TEST_PROVISION_POOL_PATH")
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	mock := &mockConnector{
+		pools:              nil,
+		networks:           nil,
+		createPoolInfo:     libvirtconn.StoragePoolInfo{Name: "default", UUID: "p1", Active: true},
+		createNetworkInfo:  libvirtconn.NetworkInfo{Name: "default", UUID: "n1", Active: true},
+	}
+	handler := NewRouter(RouterOptions{
+		Logger:           nil,
+		DB:               database,
+		Config:           nil,
+		ConfigPath:       filepath.Join(tempDir, "nonexistent.yaml"),
+		ConfigPresent:    false,
+		DBPath:           filepath.Join(tempDir, "kui.db"),
+		GitPath:          tempDir,
+		SetupConnectFunc: func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) { return mock, nil },
+	})
+
+	payload := map[string]any{
+		"host_id": "local",
+		"uri":    "qemu:///system",
+		"keyfile": "",
+		"dry_run": false,
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/provision-host", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Pool    struct{ Created bool `json:"created"` } `json:"pool"`
+		Network struct{ Created bool `json:"created"` } `json:"network"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.Pool.Created {
+		t.Error("expected pool created=true")
+	}
+	if !body.Network.Created {
+		t.Error("expected network created=true")
+	}
+}
+
+func TestProvisionHostSetup_PartialFailure(t *testing.T) {
+	tempDir := t.TempDir()
+	poolPath := filepath.Join(tempDir, "images")
+	os.Setenv("KUI_TEST_PROVISION_POOL_PATH", poolPath)
+	defer os.Unsetenv("KUI_TEST_PROVISION_POOL_PATH")
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	mock := &mockConnector{
+		pools:              nil,
+		networks:           nil,
+		createPoolInfo:     libvirtconn.StoragePoolInfo{Name: "default", UUID: "p1", Active: true},
+		createNetworkErr:   errors.New("network 'default' already exists"),
+	}
+	handler := NewRouter(RouterOptions{
+		Logger:           nil,
+		DB:               database,
+		Config:           nil,
+		ConfigPath:       filepath.Join(tempDir, "nonexistent.yaml"),
+		ConfigPresent:    false,
+		DBPath:           filepath.Join(tempDir, "kui.db"),
+		GitPath:          tempDir,
+		SetupConnectFunc: func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) { return mock, nil },
+	})
+
+	payload := map[string]any{
+		"host_id": "local",
+		"uri":    "qemu:///system",
+		"keyfile": "",
+		"dry_run": false,
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/provision-host", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for partial failure, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Pool    struct{ Created bool `json:"created"` } `json:"pool"`
+		Network struct {
+			Created bool   `json:"created"`
+			Error   string `json:"error"`
+		} `json:"network"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.Pool.Created {
+		t.Error("expected pool created=true")
+	}
+	if body.Network.Created {
+		t.Error("expected network created=false")
+	}
+	if body.Network.Error == "" {
+		t.Error("expected network error message")
+	}
+}
+
+func TestProvisionHostSetup_BlockedWhenSetupComplete(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        loaded,
+		ConfigPath:    configPath,
+		ConfigPresent: true,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	payload := map[string]any{
+		"host_id": "local",
+		"uri":     "qemu:///system",
+		"keyfile": "",
+		"dry_run": true,
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/provision-host", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 when setup complete, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProvisionHostPostSetup_RequiresAuth(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        loaded,
+		ConfigPath:    configPath,
+		ConfigPresent: true,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+	})
+
+	payload := map[string]any{"dry_run": true}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/hosts/local/provision", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401 without auth, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestProvisionHostPostSetup_RejectsRemoteHost(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config.yaml")
+	cfgYAML := []byte(`hosts:
+  - id: remote
+    uri: qemu+ssh://user@host/system
+    keyfile: /path/to/key
+jwt_secret: "` + testJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer database.Close()
+	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	_, _ = database.SQL.Exec(
+		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		"user-1", "admin", string(hash), "admin", "2026-03-16T00:00:00Z", "2026-03-16T00:00:00Z",
+	)
+
+	handler := NewRouter(RouterOptions{
+		Logger:        nil,
+		DB:            database,
+		Config:        loaded,
+		ConfigPath:    configPath,
+		ConfigPresent: true,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
+		ConnectorProvider: func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
+			return &mockConnector{}, nil
+		},
+	})
+
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "secret"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	var loginResp struct{ Token string }
+	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
+
+	payload := map[string]any{"dry_run": true}
+	bodyBytes, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/api/hosts/remote/provision", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+loginResp.Token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for remote host, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "remote host provisioning not supported") {
+		t.Errorf("expected error about remote, got %s", rec.Body.String())
 	}
 }
 

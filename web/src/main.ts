@@ -27,6 +27,8 @@ import { renderAlertsPanel } from "./components/AlertsPanel";
 import { renderHostSelector } from "./components/HostSelector";
 import { renderVMList } from "./components/VMList";
 import { openConsoleForVM } from "./lib/console";
+import { registerShortcuts } from "./lib/shortcuts";
+import { closeTopmostWinBox } from "./lib/winbox-adapter";
 
 const appEl = document.getElementById("app");
 if (!appEl) throw new Error("app element missing");
@@ -59,6 +61,7 @@ async function bootstrap(): Promise<void> {
 
 let eventsUnsub: (() => void) | null = null;
 let alertsPanelUnsub: (() => void) | null = null;
+let shortcutsUnsub: (() => void) | null = null;
 
 function renderMain(
   container: HTMLElement,
@@ -76,6 +79,10 @@ function renderMain(
   if (alertsPanelUnsub) {
     alertsPanelUnsub();
     alertsPanelUnsub = null;
+  }
+  if (shortcutsUnsub) {
+    shortcutsUnsub();
+    shortcutsUnsub = null;
   }
 
   eventsUnsub = subscribeToEvents();
@@ -166,6 +173,8 @@ function renderMain(
       ? "created_at"
       : "last_access";
 
+  const selectionRef: { vm: VM | null; index: number } = { vm: null, index: 0 };
+
   if (shouldShowChecklist(vmsResp.vms, vmsResp.orphans, preferences)) {
     const checklistContainer = document.createElement("div");
     content.appendChild(checklistContainer);
@@ -190,6 +199,10 @@ function renderMain(
       onOpenConsole: openConsoleForVM,
       onOpenCreateModal: openCreateModal,
       onOpenCloneModal: openCloneModal,
+      onRowSelect: (vm, index) => {
+        selectionRef.vm = vm;
+        selectionRef.index = index;
+      },
     });
     content.appendChild(vmListContainer);
   }
@@ -197,6 +210,27 @@ function renderMain(
   layout.appendChild(content);
   layout.appendChild(modalContainer);
   container.appendChild(layout);
+
+  shortcutsUnsub = registerShortcuts({
+    getHasModalOpen: () => modalContainer.children.length > 0,
+    getHasSelection: () => selectionRef.vm != null,
+    getSelectedVM: () => selectionRef.vm,
+    onEscape: () => {
+      if (modalContainer.children.length > 0) {
+        modalContainer.innerHTML = "";
+      } else {
+        closeTopmostWinBox();
+      }
+    },
+    onEnter: () => {
+      if (selectionRef.vm) openConsoleForVM(selectionRef.vm);
+    },
+    onCreateVM: openCreateModal,
+    onRefresh: onDataChange,
+    onClone: () => {
+      if (selectionRef.vm) openCloneModal(selectionRef.vm);
+    },
+  });
 }
 
 function renderLoginPage(container: HTMLElement, onSuccess: () => void): void {

@@ -575,6 +575,75 @@ body {
   display: none;
 }
 
+/* Shortcut help overlay — above modals */
+#shortcut-help-root {
+  position: fixed;
+  inset: 0;
+  z-index: 3100;
+  pointer-events: none;
+}
+#shortcut-help-root:not(:empty) {
+  pointer-events: auto;
+}
+.shortcut-help-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.shortcut-help-panel {
+  background: var(--kui-bg);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  max-width: 24rem;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+.shortcut-help__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.shortcut-help__header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.shortcut-help__close {
+  background: none;
+  border: none;
+  color: var(--kui-fg);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+.shortcut-help__close:hover {
+  opacity: 0.8;
+}
+.shortcut-help__list {
+  margin: 0;
+  padding: 1.25rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem 1.5rem;
+  align-items: baseline;
+}
+.shortcut-help__key {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.shortcut-help__desc {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
 /* Toast — top-right corner */
 .toast-container {
   position: fixed;

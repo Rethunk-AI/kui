@@ -26,6 +26,7 @@ import { renderCloneVMModal } from "./components/CloneVMModal";
 import { renderAlertsPanel } from "./components/AlertsPanel";
 import { renderHostSelector } from "./components/HostSelector";
 import { renderVMList } from "./components/VMList";
+import { renderShortcutHelp } from "./components/ShortcutHelp";
 import { openConsoleForVM } from "./lib/console";
 import { registerShortcuts } from "./lib/shortcuts";
 import { closeTopmostWinBox } from "./lib/winbox-adapter";
@@ -84,6 +85,21 @@ function renderMain(
     shortcutsUnsub();
     shortcutsUnsub = null;
   }
+
+  const shortcutHelpRoot = document.getElementById("shortcut-help-root");
+  const shortcutHelpVisibleRef = { current: false };
+
+  const updateShortcutHelp = (): void => {
+    if (shortcutHelpRoot) {
+      renderShortcutHelp(shortcutHelpRoot, {
+        visible: shortcutHelpVisibleRef.current,
+        onClose: () => {
+          shortcutHelpVisibleRef.current = false;
+          updateShortcutHelp();
+        },
+      });
+    }
+  };
 
   eventsUnsub = subscribeToEvents();
 
@@ -215,7 +231,16 @@ function renderMain(
     getHasModalOpen: () => modalContainer.children.length > 0,
     getHasSelection: () => selectionRef.vm != null,
     getSelectedVM: () => selectionRef.vm,
+    onShowHelp: () => {
+      shortcutHelpVisibleRef.current = true;
+      updateShortcutHelp();
+    },
     onEscape: () => {
+      if (shortcutHelpVisibleRef.current) {
+        shortcutHelpVisibleRef.current = false;
+        updateShortcutHelp();
+        return;
+      }
       if (modalContainer.children.length > 0) {
         modalContainer.innerHTML = "";
       } else {
@@ -231,6 +256,8 @@ function renderMain(
       if (selectionRef.vm) openCloneModal(selectionRef.vm);
     },
   });
+
+  updateShortcutHelp();
 }
 
 function renderLoginPage(container: HTMLElement, onSuccess: () => void): void {

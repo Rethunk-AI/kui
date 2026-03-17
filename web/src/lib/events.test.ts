@@ -10,6 +10,11 @@ vi.mock("./toast", () => ({
   showToast: vi.fn(),
 }));
 
+const mockApiFetch = vi.fn().mockResolvedValue(undefined);
+vi.mock("./api", () => ({
+  apiFetch: (...args: unknown[]) => mockApiFetch(...args),
+}));
+
 describe("events", () => {
   let mockEventSource: {
     addEventListener: ReturnType<typeof vi.fn>;
@@ -32,6 +37,7 @@ describe("events", () => {
     vi.unstubAllGlobals();
     vi.mocked(addAlert).mockClear();
     vi.mocked(showToast).mockClear();
+    mockApiFetch.mockClear();
   });
 
   it("subscribeToEvents creates EventSource with correct URL", () => {
@@ -120,5 +126,13 @@ describe("events", () => {
     expect(mockEventSource.onerror).toBeInstanceOf(Function);
     mockEventSource.onerror?.();
     expect(mockEventSource.close).toHaveBeenCalled();
+  });
+
+  it("onerror triggers auth check via apiFetch", () => {
+    mockApiFetch.mockRejectedValue(new Error("auth failed"));
+    subscribeToEvents();
+    mockEventSource.onerror?.();
+    expect(mockEventSource.close).toHaveBeenCalled();
+    expect(mockApiFetch).toHaveBeenCalledWith("/auth/me");
   });
 });

@@ -14,6 +14,12 @@ export class ApiError extends Error {
   }
 }
 
+let on401Handler: (() => void) | null = null;
+
+export function setOn401(handler: () => void): void {
+  on401Handler = handler;
+}
+
 export interface Host {
   id: string;
   uri: string;
@@ -51,6 +57,77 @@ export interface VMsResponse {
   orphans: Orphan[];
 }
 
+// Setup API (no auth; excluded from JWT middleware)
+
+export interface SetupStatusResponse {
+  setup_required: boolean;
+  reason?: "config_missing" | "db_missing" | "no_admin" | null;
+}
+
+export interface ValidateHostRequest {
+  host_id: string;
+  uri: string;
+  keyfile: string;
+}
+
+export interface ValidateHostResponse {
+  valid: boolean;
+  error?: string;
+}
+
+export interface SetupCompleteRequest {
+  admin: { username: string; password: string };
+  hosts: Array<{ id: string; uri: string; keyfile: string }>;
+  default_host: string;
+}
+
+async function setupFetch<T>(
+  path: string,
+  opts?: RequestInit & { method?: string; body?: string }
+): Promise<T> {
+  const url = `${API_BASE}${path}`;
+  const hasBody = opts?.body != null;
+  const res = await fetch(url, {
+    ...opts,
+    credentials: "include",
+    headers: hasBody
+      ? { "Content-Type": "application/json", ...opts?.headers }
+      : opts?.headers,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    let msg = body || `HTTP ${res.status}`;
+    try {
+      const parsed = JSON.parse(body) as { error?: string };
+      if (parsed?.error) msg = parsed.error;
+    } catch {
+      /* use raw body */
+    }
+    throw new ApiError(res.status, msg);
+  }
+  const text = await res.text();
+  if (!text || text.trim() === "") return undefined as T;
+  return JSON.parse(text) as T;
+}
+
+export async function fetchSetupStatus(): Promise<SetupStatusResponse> {
+  return setupFetch<SetupStatusResponse>("/setup/status");
+}
+
+export async function validateHost(req: ValidateHostRequest): Promise<ValidateHostResponse> {
+  return setupFetch<ValidateHostResponse>("/setup/validate-host", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function setupComplete(req: SetupCompleteRequest): Promise<void> {
+  await setupFetch<undefined>("/setup/complete", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
 export async function apiFetch<T>(
   path: string,
   opts?: RequestInit
@@ -66,6 +143,9 @@ export async function apiFetch<T>(
   });
   if (!res.ok) {
     const body = await res.text();
+    if (res.status === 401 && on401Handler) {
+      on401Handler();
+    }
     throw new ApiError(res.status, body || `HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
@@ -265,6 +345,9 @@ export async function fetchDomainXML(
   });
   if (!res.ok) {
     const body = await res.text();
+    if (res.status === 401 && on401Handler) {
+      on401Handler();
+    }
     throw new ApiError(res.status, body || `HTTP ${res.status}`);
   }
   return res.text();
@@ -284,6 +367,9 @@ export async function putDomainXML(
   });
   if (!res.ok) {
     const body = await res.text();
+    if (res.status === 401 && on401Handler) {
+      on401Handler();
+    }
     throw new ApiError(res.status, body || `HTTP ${res.status}`);
   }
   return res.json() as Promise<VMDetail>;

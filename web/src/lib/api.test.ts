@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   ApiError,
   apiFetch,
+  setOn401,
   login,
   putPreferences,
   fetchHosts,
@@ -74,6 +75,24 @@ describe("api", () => {
       status: 401,
       message: "Unauthorized",
     });
+  });
+
+  it("apiFetch 401 calls on401Handler before throwing", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: () => Promise.resolve("Unauthorized"),
+    });
+    const handler = vi.fn();
+    setOn401(handler);
+    try {
+      await apiFetch("/test");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      expect((e as ApiError).status).toBe(401);
+    }
+    expect(handler).toHaveBeenCalledTimes(1);
+    setOn401(() => {}); // reset to avoid affecting other tests
   });
 
   it("apiFetch 5xx throws ApiError", async () => {

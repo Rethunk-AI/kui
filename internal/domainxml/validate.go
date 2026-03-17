@@ -78,3 +78,28 @@ func findForbiddenElements(xmlStr string) []string {
 	}
 	return found
 }
+
+// NetworksFromDomain parses domain XML and returns network names from interface
+// source network elements. Returns error on parse failure. Only network-type
+// interfaces are considered; bridge-type are ignored.
+func NetworksFromDomain(xmlStr string) ([]string, error) {
+	dom := &libvirtxml.Domain{}
+	if err := dom.Unmarshal(xmlStr); err != nil {
+		return nil, fmt.Errorf("invalid domain XML")
+	}
+	var out []string
+	seen := make(map[string]bool)
+	if dom.Devices != nil {
+		for _, iface := range dom.Devices.Interfaces {
+			if iface.Source == nil || iface.Source.Network == nil {
+				continue
+			}
+			name := strings.TrimSpace(iface.Source.Network.Network)
+			if name != "" && !seen[name] {
+				seen[name] = true
+				out = append(out, name)
+			}
+		}
+	}
+	return out, nil
+}

@@ -133,6 +133,7 @@ export function renderDomainXMLEditor(
       textarea.value = xml;
       textarea.placeholder = "";
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) return;
       const msg = err instanceof ApiError ? err.message : "Failed to load domain XML";
       showError(msg);
       addAlert(
@@ -159,6 +160,7 @@ export function renderDomainXMLEditor(
       wrappedOnClose();
     } catch (err) {
       submitBtn.disabled = false;
+      if (err instanceof ApiError && err.status === 401) return;
       let msg = err instanceof ApiError ? err.message : "Failed to save domain XML";
       try {
         if (err instanceof ApiError && err.message) {

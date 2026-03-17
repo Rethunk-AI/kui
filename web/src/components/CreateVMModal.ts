@@ -95,6 +95,12 @@ export function renderCreateVMModal(
   const poolField = document.createElement("div");
   poolField.className = "modal__field";
   poolField.appendChild(poolLabel);
+  const poolHint = document.createElement("p");
+  poolHint.className = "modal__hint";
+  poolHint.id = "create-vm-pool-hint";
+  poolHint.style.display = "none";
+  poolHint.textContent = "No storage pools on this host. Create one in virt-manager or virsh.";
+  poolField.appendChild(poolHint);
   form.appendChild(poolField);
 
   const diskModeGroup = document.createElement("div");
@@ -224,9 +230,19 @@ export function renderCreateVMModal(
         const defaultNet = networks.find((n) => n.name === "default") ?? networks[0];
         networkSelect.value = defaultNet.name;
       }
+      if (pools.length === 0) {
+        poolHint.style.display = "";
+        submitBtn.disabled = true;
+      } else {
+        poolHint.style.display = "none";
+        submitBtn.disabled = false;
+      }
     } catch (err) {
       poolSelect.innerHTML = "";
       poolSelect.appendChild(createOption("", "Failed to load"));
+      poolHint.style.display = "none";
+      submitBtn.disabled = true;
+      if (err instanceof ApiError && err.status === 401) return;
       addAlert(
         "api_error",
         err instanceof ApiError ? err.message : "Failed to load pools/networks",
@@ -248,6 +264,7 @@ export function renderCreateVMModal(
     } catch (err) {
       volumeSelect.innerHTML = "";
       volumeSelect.appendChild(createOption("", "Failed to load"));
+      if (err instanceof ApiError && err.status === 401) return;
       addAlert(
         "api_error",
         err instanceof ApiError ? err.message : "Failed to load volumes",
@@ -279,6 +296,7 @@ export function renderCreateVMModal(
   const submitBtn = document.createElement("button");
   submitBtn.type = "submit";
   submitBtn.textContent = "Create";
+  submitBtn.disabled = true;
   footer.appendChild(cancelBtn);
   footer.appendChild(submitBtn);
   form.appendChild(footer);
@@ -341,6 +359,7 @@ export function renderCreateVMModal(
       wrappedOnClose();
     } catch (err) {
       submitBtn.disabled = false;
+      if (err instanceof ApiError && err.status === 401) return;
       const msg = err instanceof ApiError ? err.message : "Failed to create VM";
       showError(msg, poolSelect);
       addAlert(

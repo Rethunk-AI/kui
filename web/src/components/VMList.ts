@@ -9,6 +9,7 @@ import {
   bulkDestroyOrphans,
   claimVM,
   recoverVM,
+  type Host,
   type Orphan,
   type VM,
   type VMsResponse,
@@ -103,6 +104,7 @@ function groupVMs(vms: VM[], groupBy: string): Map<string, VM[]> {
 
 export interface VMListProps {
   data: VMsResponse;
+  hosts: Host[];
   groupBy?: "last_access" | "created_at";
   onRefresh: () => void;
   onOpenConsole?: (vm: VM) => void;
@@ -118,9 +120,7 @@ export function renderVMList(
   props: VMListProps
 ): void {
   container.innerHTML = "";
-  const {
-    data,
-    groupBy = "last_access",
+  const { data, hosts, groupBy = "last_access",
     onRefresh,
     onOpenConsole,
     onOpenCreateModal,
@@ -128,6 +128,12 @@ export function renderVMList(
     onOpenDomainXMLEditor,
     onRowSelect,
   } = props;
+
+  const safeData = {
+    ...data,
+    vms: data.vms ?? [],
+    orphans: data.orphans ?? [],
+  };
 
   const vmListEl = document.createElement("div");
   vmListEl.className = "vm-list";
@@ -144,12 +150,16 @@ export function renderVMList(
     createBtn.type = "button";
     createBtn.className = "vm-list__btn vm-list__btn--create";
     createBtn.textContent = "Create VM";
+    createBtn.disabled = hosts.length === 0;
+    if (hosts.length === 0) {
+      createBtn.title = "Add hosts in setup first";
+    }
     createBtn.addEventListener("click", onOpenCreateModal);
     headerRow.appendChild(createBtn);
   }
   vmListEl.appendChild(headerRow);
 
-  if (data.vms.length === 0 && data.orphans.length === 0) {
+  if (safeData.vms.length === 0 && safeData.orphans.length === 0) {
     const emptyP = document.createElement("p");
     emptyP.className = "vm-list__empty";
     emptyP.textContent = "No VMs";
@@ -158,8 +168,8 @@ export function renderVMList(
     return;
   }
 
-  if (data.vms.length > 0) {
-    const grouped = groupVMs(data.vms, groupBy);
+  if (safeData.vms.length > 0) {
+    const grouped = groupVMs(safeData.vms, groupBy);
     const flatVMs: VM[] = [];
     for (const [, vms] of grouped) {
       flatVMs.push(...vms);
@@ -218,7 +228,7 @@ export function renderVMList(
         li.tabIndex = flatIndex === selectedIndex ? 0 : -1;
         optionElements.push(li);
 
-        const hostStatus = data.hosts[vm.host_id] ?? "unknown";
+        const hostStatus = safeData.hosts[vm.host_id] ?? "unknown";
         const displayName = vm.display_name ?? vm.libvirt_uuid ?? "VM";
         const relTime = getRelativeTimeLabel(vm);
 
@@ -281,7 +291,7 @@ export function renderVMList(
 
   container.appendChild(vmListEl);
 
-  if (data.orphans.length > 0) {
+  if (safeData.orphans.length > 0) {
     const selectedOrphanIds = new Set<string>();
     const orphansSection = document.createElement("section");
     orphansSection.className = "vm-list-orphans";
@@ -299,7 +309,7 @@ export function renderVMList(
     toggleBtn.type = "button";
     toggleBtn.className = "vm-list-orphans__toggle";
     toggleBtn.setAttribute("aria-expanded", "true");
-    toggleBtn.textContent = `Orphan VMs (${data.orphans.length})`;
+    toggleBtn.textContent = `Orphan VMs (${safeData.orphans.length})`;
     orphansTitle.appendChild(selectAllCheckbox);
     orphansTitle.appendChild(toggleBtn);
     orphansHeader.appendChild(orphansTitle);
@@ -326,13 +336,13 @@ export function renderVMList(
       bulkBar.hidden = n === 0;
       bulkClaimBtn.textContent = `Claim selected (${n})`;
       bulkDestroyBtn.textContent = `Destroy selected (${n})`;
-      selectAllCheckbox.checked = n > 0 && n === data.orphans.length;
-      selectAllCheckbox.indeterminate = n > 0 && n < data.orphans.length;
+      selectAllCheckbox.checked = n > 0 && n === safeData.orphans.length;
+      selectAllCheckbox.indeterminate = n > 0 && n < safeData.orphans.length;
     };
 
     selectAllCheckbox.addEventListener("change", () => {
       if (selectAllCheckbox.checked) {
-        for (const o of data.orphans) selectedOrphanIds.add(orphanKey(o));
+        for (const o of safeData.orphans) selectedOrphanIds.add(orphanKey(o));
       } else {
         selectedOrphanIds.clear();
       }
@@ -349,7 +359,7 @@ export function renderVMList(
       toggleBtn.setAttribute("aria-expanded", String(expanded));
     });
 
-    for (const orphan of data.orphans) {
+    for (const orphan of safeData.orphans) {
       const key = orphanKey(orphan);
       const li = document.createElement("li");
       li.className = "vm-list-orphans__item";
@@ -387,10 +397,10 @@ export function renderVMList(
     }
 
     bulkClaimBtn.addEventListener("click", () => {
-      handleBulkClaim(data.orphans, selectedOrphanIds, bulkClaimBtn, bulkDestroyBtn, onRefresh, updateBulkBar);
+      handleBulkClaim(safeData.orphans, selectedOrphanIds, bulkClaimBtn, bulkDestroyBtn, onRefresh, updateBulkBar);
     });
     bulkDestroyBtn.addEventListener("click", () => {
-      handleBulkDestroy(data.orphans, selectedOrphanIds, bulkClaimBtn, bulkDestroyBtn, onRefresh, updateBulkBar);
+      handleBulkDestroy(safeData.orphans, selectedOrphanIds, bulkClaimBtn, bulkDestroyBtn, onRefresh, updateBulkBar);
     });
 
     orphansBody.appendChild(bulkBar);
@@ -422,6 +432,7 @@ async function handleClaim(
     onRefresh();
   } catch (err) {
     btn.disabled = false;
+    if (err instanceof ApiError && err.status === 401) return;
     const msg = err instanceof ApiError ? err.message : "Claim failed";
     addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);
   }
@@ -438,6 +449,7 @@ async function handleRecover(
     onRefresh();
   } catch (err) {
     btn.disabled = false;
+    if (err instanceof ApiError && err.status === 401) return;
     const msg = err instanceof ApiError ? err.message : "Recover failed";
     showToast(msg, "warn");
     addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);
@@ -480,6 +492,7 @@ async function handleBulkClaim(
   } catch (err) {
     claimBtn.disabled = false;
     destroyBtn.disabled = false;
+    if (err instanceof ApiError && err.status === 401) return;
     const msg = err instanceof ApiError ? err.message : "Request failed";
     showToast(msg, "warn");
     addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);
@@ -523,6 +536,7 @@ async function handleBulkDestroy(
   } catch (err) {
     claimBtn.disabled = false;
     destroyBtn.disabled = false;
+    if (err instanceof ApiError && err.status === 401) return;
     const msg = err instanceof ApiError ? err.message : "Request failed";
     showToast(msg, "warn");
     addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);

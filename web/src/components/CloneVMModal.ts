@@ -101,6 +101,12 @@ export function renderCloneVMModal(
   const poolField = document.createElement("div");
   poolField.className = "modal__field";
   poolField.appendChild(poolLabel);
+  const poolHint = document.createElement("p");
+  poolHint.className = "modal__hint";
+  poolHint.id = "clone-vm-pool-hint";
+  poolHint.style.display = "none";
+  poolHint.textContent = "No storage pools on this host. Create one in virt-manager or virsh.";
+  poolField.appendChild(poolHint);
   form.appendChild(poolField);
 
   const nameInput = document.createElement("input");
@@ -127,9 +133,19 @@ export function renderCloneVMModal(
       for (const p of poolsResp) {
         poolSelect.appendChild(createOption(p.name, p.name));
       }
+      if (poolsResp.length === 0) {
+        poolHint.style.display = "";
+        submitBtn.disabled = true;
+      } else {
+        poolHint.style.display = "none";
+        submitBtn.disabled = false;
+      }
     } catch (err) {
       poolSelect.innerHTML = "";
       poolSelect.appendChild(createOption("", "Failed to load"));
+      poolHint.style.display = "none";
+      submitBtn.disabled = true;
+      if (err instanceof ApiError && err.status === 401) return;
       addAlert(
         "api_error",
         err instanceof ApiError ? err.message : "Failed to load pools",
@@ -150,6 +166,7 @@ export function renderCloneVMModal(
   const submitBtn = document.createElement("button");
   submitBtn.type = "submit";
   submitBtn.textContent = "Clone";
+  submitBtn.disabled = true;
   footer.appendChild(cancelBtn);
   footer.appendChild(submitBtn);
   form.appendChild(footer);
@@ -193,6 +210,7 @@ export function renderCloneVMModal(
       wrappedOnClose();
     } catch (err) {
       submitBtn.disabled = false;
+      if (err instanceof ApiError && err.status === 401) return;
       const msg = err instanceof ApiError ? err.message : "Failed to clone VM";
       showError(msg, poolSelect);
       addAlert(

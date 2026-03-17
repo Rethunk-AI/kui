@@ -8,14 +8,16 @@ import {
   ApiError,
   apiFetch,
   fetchHosts,
+  fetchSetupStatus,
   login,
   putPreferences,
+  setOn401,
   type Host,
   type Preferences,
   type VM,
   type VMsResponse,
 } from "./lib/api";
-import { addAlert } from "./lib/alerts";
+import { addAlert, clearAllAlerts } from "./lib/alerts";
 import { subscribeToEvents } from "./lib/events";
 import {
   renderFirstRunChecklist,
@@ -27,6 +29,7 @@ import { renderDomainXMLEditor } from "./components/DomainXMLEditor";
 import { renderAlertsPanel } from "./components/AlertsPanel";
 import { renderHostSelector } from "./components/HostSelector";
 import { renderVMList } from "./components/VMList";
+import { renderSetupWizard } from "./components/SetupWizard";
 import { renderShortcutHelp } from "./components/ShortcutHelp";
 import { openConsoleForVM } from "./lib/console";
 import { registerShortcuts } from "./lib/shortcuts";
@@ -46,6 +49,19 @@ function injectSkipLink(): void {
 injectSkipLink();
 
 async function bootstrap(): Promise<void> {
+  const setupStatus = await fetchSetupStatus();
+
+  if (setupStatus.setup_required) {
+    app.innerHTML = "";
+    const main = document.createElement("main");
+    main.id = "main-content";
+    main.tabIndex = -1;
+    main.className = "app-content";
+    app.appendChild(main);
+    renderSetupWizard(main, () => bootstrap());
+    return;
+  }
+
   let vmsResp: VMsResponse;
   let preferences: Preferences | null = null;
   let hosts: Host[] = [];
@@ -60,10 +76,7 @@ async function bootstrap(): Promise<void> {
     preferences = prefs;
     hosts = hostsResp;
   } catch (e) {
-    if (e instanceof ApiError && e.status === 401) {
-      renderLoginPage(app, bootstrap);
-      return;
-    }
+    if (e instanceof ApiError && e.status === 401) return;
     throw e;
   }
 
@@ -134,6 +147,7 @@ function renderMain(
         const prefs = await apiFetch<Preferences>("/preferences");
         renderMain(container, vmsResp, prefs, hosts, onDataChange);
       } catch (err) {
+        if (err instanceof ApiError && err.status === 401) return;
         const msg = err instanceof ApiError ? err.message : "Failed to save host preference";
         addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);
         renderMain(container, vmsResp, preferences, hosts, onDataChange);
@@ -215,17 +229,25 @@ function renderMain(
 
   const selectionRef: { vm: VM | null; index: number } = { vm: null, index: 0 };
 
-  if (shouldShowChecklist(vmsResp.vms, vmsResp.orphans, preferences)) {
+  const vms = vmsResp.vms ?? [];
+  const orphans = vmsResp.orphans ?? [];
+  if (shouldShowChecklist(vms, orphans, preferences)) {
     const checklistContainer = document.createElement("div");
     content.appendChild(checklistContainer);
     renderFirstRunChecklist(checklistContainer, {
+      hosts,
       onDismissed: async () => {
-        const [vms, prefs, hostsResp] = await Promise.all([
-          apiFetch<VMsResponse>("/vms"),
-          apiFetch<Preferences>("/preferences"),
-          fetchHosts(),
-        ]);
-        renderMain(container, vms, prefs, hostsResp, onDataChange);
+        try {
+          const [vms, prefs, hostsResp] = await Promise.all([
+            apiFetch<VMsResponse>("/vms"),
+            apiFetch<Preferences>("/preferences"),
+            fetchHosts(),
+          ]);
+          renderMain(container, vms, prefs, hostsResp, onDataChange);
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 401) return;
+          throw err;
+        }
       },
       onOpenCreateModal: openCreateModal,
     });
@@ -233,7 +255,8 @@ function renderMain(
     const vmListContainer = document.createElement("div");
     vmListContainer.className = "vm-list-container";
     renderVMList(vmListContainer, {
-      data: vmsResp,
+      data: { ...vmsResp, vms, orphans },
+      hosts,
       groupBy,
       onRefresh: onDataChange,
       onOpenConsole: openConsoleForVM,
@@ -275,7 +298,9 @@ function renderMain(
     onEnter: () => {
       if (selectionRef.vm) openConsoleForVM(selectionRef.vm);
     },
-    onCreateVM: openCreateModal,
+    onCreateVM: () => {
+      if (hosts.length > 0) openCreateModal();
+    },
     onRefresh: onDataChange,
     onClone: () => {
       if (selectionRef.vm) openCloneModal(selectionRef.vm);
@@ -335,6 +360,11 @@ function renderLoginPage(container: HTMLElement, onSuccess: () => void): void {
   main.appendChild(form);
   container.appendChild(main);
 }
+
+setOn401(() => {
+  clearAllAlerts();
+  renderLoginPage(app, bootstrap);
+});
 
 bootstrap().catch((err) => {
   app.innerHTML = `<p class="error">Failed to load: ${err instanceof Error ? err.message : String(err)}</p>`;

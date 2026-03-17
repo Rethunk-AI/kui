@@ -43,6 +43,10 @@ import (
 // uses the default implementation (libvirtconn.Connect). Inject a mock in tests.
 type ConnectorProvider func(ctx context.Context, hostID string) (libvirtconn.Connector, error)
 
+// SetupConnectFunc connects to a host by URI and keyfile during setup. When nil, the router
+// uses libvirtconn.Connect. Inject a mock in tests to validate empty pools/networks.
+type SetupConnectFunc func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error)
+
 type RouterOptions struct {
 	Logger            *slog.Logger
 	DB                *db.DB
@@ -53,20 +57,22 @@ type RouterOptions struct {
 	GitPath           string
 	Broadcaster       *broadcaster.Broadcaster
 	ConnectorProvider ConnectorProvider
+	SetupConnectFunc  SetupConnectFunc
 }
 
 type routerState struct {
-	logger             *slog.Logger
-	db                 *db.DB
-	config             *config.Config
-	configPath         string
-	configPresent      bool
-	dbPath             string
-	gitPath            string
-	broadcaster        *broadcaster.Broadcaster
-	connectorProvider  ConnectorProvider
-	setupCompleted     bool
-	setupCompletedMu   sync.Mutex
+	logger            *slog.Logger
+	db                *db.DB
+	config            *config.Config
+	configPath        string
+	configPresent     bool
+	dbPath            string
+	gitPath           string
+	broadcaster       *broadcaster.Broadcaster
+	connectorProvider ConnectorProvider
+	setupConnectFunc  SetupConnectFunc
+	setupCompleted    bool
+	setupCompletedMu  sync.Mutex
 }
 
 type setupStatusResponse struct {
@@ -195,6 +201,7 @@ func NewRouter(opts RouterOptions) http.Handler {
 		gitPath:           opts.GitPath,
 		broadcaster:       bc,
 		connectorProvider: opts.ConnectorProvider,
+		setupConnectFunc:  opts.SetupConnectFunc,
 	}
 
 	sessionTimeout := 24 * time.Hour
@@ -262,6 +269,7 @@ func NewRouter(opts RouterOptions) http.Handler {
 
 	router.Get("/api/templates", state.getTemplates())
 	router.Post("/api/templates", state.createTemplate())
+	router.Post("/api/templates/{template_id}/create", state.createVMFromTemplate())
 
 	router.Get("/api/events", state.events())
 
@@ -696,8 +704,8 @@ func (r *routerState) getVMs() http.HandlerFunc {
 		for _, row := range metadataRows {
 			metaByKey[row.HostID+"\x00"+row.LibvirtUUID] = row
 		}
-		var vms []vmListItem
-		var orphans []vmOrphanItem
+		vms := make([]vmListItem, 0)
+		orphans := make([]vmOrphanItem, 0)
 		hosts := make(map[string]string)
 		for _, h := range r.config.Hosts {
 			conn, err := r.getConnectorForHost(req.Context(), h.ID)
@@ -1139,6 +1147,32 @@ func (r *routerState) putDomainXML() http.HandlerFunc {
 		if err := domainxml.ValidateSafe(afterXML, libvirtUUID); err != nil {
 			writeJSONError(w, http.StatusBadRequest, err.Error())
 			return
+		}
+		networks, err := domainxml.NetworksFromDomain(afterXML)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if len(networks) > 0 {
+			hostNetworks, err := conn.ListNetworks(req.Context())
+			if err != nil {
+				r.logger.Error("list networks failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to list networks")
+				return
+			}
+			for _, net := range networks {
+				found := false
+				for _, n := range hostNetworks {
+					if n.Name == net {
+						found = true
+						break
+					}
+				}
+				if !found {
+					writeJSONError(w, http.StatusConflict, "network invalid or does not exist on host")
+					return
+				}
+			}
 		}
 		beforeXML, err := conn.GetDomainXML(req.Context(), libvirtUUID)
 		if err != nil {
@@ -1872,6 +1906,23 @@ func (r *routerState) createVM() http.HandlerFunc {
 			writeJSONError(w, http.StatusBadRequest, "pool invalid or inactive")
 			return
 		}
+		networks, err := conn.ListNetworks(req.Context())
+		if err != nil {
+			r.logger.Error("list networks failed", "host_id", hostID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to list networks")
+			return
+		}
+		found := false
+		for _, n := range networks {
+			if n.Name == network {
+				found = true
+				break
+			}
+		}
+		if !found {
+			writeJSONError(w, http.StatusBadRequest, "network invalid or does not exist on host")
+			return
+		}
 		var diskPath string
 		existingName := strings.TrimSpace(payload.Disk.Name)
 		sizeMB := payload.Disk.SizeMB
@@ -2066,6 +2117,12 @@ type createTemplateRequest struct {
 	SourceLibvirtUUID string `json:"source_libvirt_uuid"`
 	Name            string `json:"name"`
 	TargetPool      string `json:"target_pool"`
+}
+
+type createVMFromTemplateRequest struct {
+	HostID      string `json:"host_id"`
+	TargetPool  string `json:"target_pool"`
+	DisplayName string `json:"display_name"`
 }
 
 type createTemplateResponse struct {
@@ -2310,6 +2367,324 @@ func (r *routerState) createTemplate() http.HandlerFunc {
 			Name:       name,
 			BaseImage:  meta.BaseImage,
 			CreatedAt:  now,
+		})
+	}
+}
+
+func (r *routerState) createVMFromTemplate() http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		user, ok := mw.UserFromContext(req)
+		if !ok {
+			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		if !r.configPresent || r.config == nil {
+			writeJSONError(w, http.StatusServiceUnavailable, "setup required")
+			return
+		}
+		gitBase := r.configuredGitPath()
+		if gitBase == "" {
+			writeJSONError(w, http.StatusServiceUnavailable, "git path not configured")
+			return
+		}
+		templateID := chi.URLParam(req, "template_id")
+		if strings.TrimSpace(templateID) == "" {
+			writeJSONError(w, http.StatusBadRequest, "template_id required")
+			return
+		}
+		var payload createVMFromTemplateRequest
+		if err := decodeJSON(req.Body, &payload); err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		hostID := strings.TrimSpace(payload.HostID)
+		if hostID == "" && r.config.DefaultHost != "" {
+			hostID = r.config.DefaultHost
+		}
+		if hostID == "" {
+			writeJSONError(w, http.StatusBadRequest, "host_id required")
+			return
+		}
+		exists, err := template.TemplateExists(gitBase, templateID)
+		if err != nil {
+			r.logger.Error("check template exists failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create VM from template")
+			return
+		}
+		if !exists {
+			writeJSONError(w, http.StatusNotFound, "template not found")
+			return
+		}
+		templateDir := filepath.Join(gitBase, "templates", templateID)
+		metaPath := filepath.Join(templateDir, "meta.yaml")
+		domainPath := filepath.Join(templateDir, "domain.xml")
+		metaData, err := os.ReadFile(metaPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				writeJSONError(w, http.StatusNotFound, "template not found")
+				return
+			}
+			r.logger.Error("read meta.yaml failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create VM from template")
+			return
+		}
+		meta, err := template.ParseMeta(metaData)
+		if err != nil {
+			r.logger.Error("parse meta.yaml failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create VM from template")
+			return
+		}
+		domainXML, err := os.ReadFile(domainPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				writeJSONError(w, http.StatusNotFound, "template not found")
+				return
+			}
+			r.logger.Error("read domain.xml failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create VM from template")
+			return
+		}
+		conn, err := r.getConnectorForHost(req.Context(), hostID)
+		if err != nil {
+			writeJSONError(w, http.StatusNotFound, "host not found")
+			return
+		}
+		defer conn.Close()
+		network := strings.TrimSpace(meta.Network)
+		if network == "" {
+			var dom libvirtxml.Domain
+			if err := dom.Unmarshal(string(domainXML)); err == nil && dom.Devices != nil {
+				for _, iface := range dom.Devices.Interfaces {
+					if iface.Source != nil && iface.Source.Network != nil && strings.TrimSpace(iface.Source.Network.Network) != "" {
+						network = strings.TrimSpace(iface.Source.Network.Network)
+						break
+					}
+				}
+			}
+		}
+		if network == "" {
+			network = "default"
+		}
+		networks, err := conn.ListNetworks(req.Context())
+		if err != nil {
+			r.logger.Error("list networks failed", "host_id", hostID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to list networks")
+			return
+		}
+		found := false
+		for _, n := range networks {
+			if n.Name == network {
+				found = true
+				break
+			}
+		}
+		if !found {
+			writeJSONError(w, http.StatusBadRequest, "network invalid or does not exist on host")
+			return
+		}
+		targetPool := strings.TrimSpace(payload.TargetPool)
+		if targetPool == "" && r.config.TemplateStorage != nil {
+			targetPool = strings.TrimSpace(*r.config.TemplateStorage)
+		}
+		if targetPool == "" && r.config.DefaultPool != nil {
+			targetPool = strings.TrimSpace(*r.config.DefaultPool)
+		}
+		if targetPool == "" {
+			targetPool = meta.BaseImage.Pool
+		}
+		if targetPool == "" {
+			writeJSONError(w, http.StatusBadRequest, "target_pool required")
+			return
+		}
+		if err := conn.ValidatePool(req.Context(), targetPool); err != nil {
+			r.logger.Error("validate target pool failed", "pool", targetPool, "error", err)
+			writeJSONError(w, http.StatusBadRequest, "pool invalid or inactive")
+			return
+		}
+		sourcePool := strings.TrimSpace(meta.BaseImage.Pool)
+		sourceVol := strings.TrimSpace(meta.BaseImage.Volume)
+		sourcePath := strings.TrimSpace(meta.BaseImage.Path)
+		if sourcePool == "" {
+			writeJSONError(w, http.StatusBadRequest, "template base_image missing pool")
+			return
+		}
+		if sourceVol == "" && sourcePath == "" {
+			writeJSONError(w, http.StatusBadRequest, "template base_image missing volume or path")
+			return
+		}
+		if sourceVol == "" && sourcePath != "" {
+			pools, err := conn.ListPools(req.Context())
+			if err != nil {
+				r.logger.Error("list pools failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to resolve base image")
+				return
+			}
+			for _, p := range pools {
+				vols, err := conn.ListVolumes(req.Context(), p.Name)
+				if err != nil {
+					continue
+				}
+				for _, v := range vols {
+					if v.Path == sourcePath {
+						sourcePool = p.Name
+						sourceVol = v.Name
+						break
+					}
+				}
+				if sourceVol != "" {
+					break
+				}
+			}
+			if sourceVol == "" {
+				writeJSONError(w, http.StatusBadRequest, "template base_image path not found on host")
+				return
+			}
+		}
+		if err := conn.ValidatePool(req.Context(), sourcePool); err != nil {
+			r.logger.Error("validate source pool failed", "pool", sourcePool, "error", err)
+			writeJSONError(w, http.StatusBadRequest, "template base_image pool invalid or inactive")
+			return
+		}
+		vmUUID, err := randomUUID()
+		if err != nil {
+			writeJSONError(w, http.StatusInternalServerError, "failed to generate UUID")
+			return
+		}
+		volName := fmt.Sprintf("kui-%s.qcow2", vmUUID[:8])
+		var targetDiskPath string
+		if sourcePool == targetPool {
+			if err := conn.CloneVolume(req.Context(), targetPool, sourceVol, volName); err != nil {
+				r.logger.Error("clone volume failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to create disk")
+				return
+			}
+			vols, err := conn.ListVolumes(req.Context(), targetPool)
+			if err != nil {
+				r.logger.Error("list volumes failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to resolve disk path")
+				return
+			}
+			for _, v := range vols {
+				if v.Name == volName {
+					targetDiskPath = v.Path
+					break
+				}
+			}
+		} else {
+			data, err := conn.CopyVolume(req.Context(), sourcePool, sourceVol)
+			if err != nil {
+				r.logger.Error("copy volume failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to create disk")
+				return
+			}
+			vol, err := conn.CreateVolumeFromBytes(req.Context(), targetPool, volName, data, "qcow2")
+			if err != nil {
+				r.logger.Error("create volume failed", "error", err)
+				writeJSONError(w, http.StatusInternalServerError, "failed to create disk")
+				return
+			}
+			targetDiskPath = vol.Path
+		}
+		if targetDiskPath == "" {
+			writeJSONError(w, http.StatusInternalServerError, "failed to resolve disk path")
+			return
+		}
+		var dom libvirtxml.Domain
+		if err := dom.Unmarshal(string(domainXML)); err != nil {
+			r.logger.Error("unmarshal domain XML failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create VM from template")
+			return
+		}
+		dom.UUID = vmUUID
+		dom.Name = fmt.Sprintf("kui-%s", vmUUID[:8])
+		cpu := meta.CPU
+		if cpu <= 0 && r.config != nil && r.config.VMDefaults.CPU > 0 {
+			cpu = r.config.VMDefaults.CPU
+		}
+		if cpu <= 0 {
+			cpu = 2
+		}
+		ramMB := meta.RAMMB
+		if ramMB <= 0 && r.config != nil && r.config.VMDefaults.RAMMB > 0 {
+			ramMB = r.config.VMDefaults.RAMMB
+		}
+		if ramMB <= 0 {
+			ramMB = 2048
+		}
+		if dom.VCPU == nil {
+			dom.VCPU = &libvirtxml.DomainVCPU{}
+		}
+		dom.VCPU.Value = uint(cpu)
+		kiB := uint(ramMB) * 1024
+		if dom.Memory == nil {
+			dom.Memory = &libvirtxml.DomainMemory{Unit: "KiB"}
+		}
+		dom.Memory.Value = kiB
+		dom.Memory.Unit = "KiB"
+		if dom.CurrentMemory != nil {
+			dom.CurrentMemory.Value = kiB
+			dom.CurrentMemory.Unit = "KiB"
+		}
+		if dom.Devices != nil {
+			for i := range dom.Devices.Disks {
+				d := &dom.Devices.Disks[i]
+				if d.Source != nil {
+					if d.Source.File != nil {
+						d.Source.File.File = targetDiskPath
+					} else {
+						d.Source.File = &libvirtxml.DomainDiskSourceFile{File: targetDiskPath}
+					}
+					break
+				}
+			}
+			for i := range dom.Devices.Interfaces {
+				if dom.Devices.Interfaces[i].Source != nil && dom.Devices.Interfaces[i].Source.Network != nil {
+					dom.Devices.Interfaces[i].Source.Network.Network = network
+					break
+				}
+			}
+		}
+		finalDomainXML, err := dom.Marshal()
+		if err != nil {
+			r.logger.Error("marshal domain XML failed", "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create VM from template")
+			return
+		}
+		domainInfo, err := conn.DefineXML(req.Context(), finalDomainXML)
+		if err != nil {
+			r.logger.Error("define domain failed", "host_id", hostID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create VM from template")
+			return
+		}
+		displayName := strings.TrimSpace(payload.DisplayName)
+		if displayName == "" {
+			displayName = dom.Name
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		if err := r.db.InsertVMMetadata(req.Context(), hostID, domainInfo.UUID, true, &displayName); err != nil {
+			r.logger.Error("insert vm_metadata failed", "host_id", hostID, "libvirt_uuid", domainInfo.UUID, "error", err)
+			writeJSONError(w, http.StatusInternalServerError, "failed to create VM from template")
+			return
+		}
+		_ = audit.RecordEvent(req.Context(), r.db, audit.Event{
+			EventType:  "vm_lifecycle",
+			EntityType: "vm",
+			EntityID:   domainInfo.UUID,
+			UserID:     &user.ID,
+			Payload: map[string]string{
+				"action":     "create",
+				"from_state": "",
+				"to_state":   string(domainInfo.State),
+				"host_id":    hostID,
+				"template_id": templateID,
+			},
+		})
+		writeJSON(w, http.StatusCreated, createVMResponse{
+			HostID:      hostID,
+			LibvirtUUID: domainInfo.UUID,
+			DisplayName: displayName,
+			CreatedAt:   now,
+			Status:      string(domainInfo.State),
 		})
 	}
 }
@@ -2728,6 +3103,13 @@ func (r *routerState) setupStatus() http.HandlerFunc {
 	}
 }
 
+func (r *routerState) setupConnect(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) {
+	if r.setupConnectFunc != nil {
+		return r.setupConnectFunc(ctx, uri, keyfile)
+	}
+	return libvirtconn.Connect(ctx, uri, keyfile)
+}
+
 func (r *routerState) validateHost() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if r.configPresent {
@@ -2744,7 +3126,7 @@ func (r *routerState) validateHost() http.HandlerFunc {
 			return
 		}
 
-		conn, err := libvirtconn.Connect(req.Context(), payload.URI, payload.Keyfile)
+		conn, err := r.setupConnect(req.Context(), payload.URI, payload.Keyfile)
 		if err != nil {
 			r.logger.Debug("validate-host failed", "host_id", payload.HostID, "error", err)
 			writeJSON(w, http.StatusOK, validateHostResponse{
@@ -2753,11 +3135,52 @@ func (r *routerState) validateHost() http.HandlerFunc {
 			})
 			return
 		}
-		if err := conn.Close(); err != nil {
-			r.logger.Debug("validate-host close failed", "host_id", payload.HostID, "error", err)
+		defer conn.Close()
+
+		hostID := strings.TrimSpace(payload.HostID)
+		if hostID == "" {
+			hostID = "host"
+		}
+
+		pools, err := conn.ListPools(req.Context())
+		if err != nil {
+			r.logger.Debug("validate-host list pools failed", "host_id", payload.HostID, "error", err)
 			writeJSON(w, http.StatusOK, validateHostResponse{
 				Valid: false,
 				Error: sanitizeValidationError(err.Error()),
+			})
+			return
+		}
+		networks, err := conn.ListNetworks(req.Context())
+		if err != nil {
+			r.logger.Debug("validate-host list networks failed", "host_id", payload.HostID, "error", err)
+			writeJSON(w, http.StatusOK, validateHostResponse{
+				Valid: false,
+				Error: sanitizeValidationError(err.Error()),
+			})
+			return
+		}
+
+		noPools := len(pools) == 0
+		noNetworks := len(networks) == 0
+		if noPools && noNetworks {
+			writeJSON(w, http.StatusOK, validateHostResponse{
+				Valid: false,
+				Error: fmt.Sprintf("Host %s has no storage pools and no networks", hostID),
+			})
+			return
+		}
+		if noPools {
+			writeJSON(w, http.StatusOK, validateHostResponse{
+				Valid: false,
+				Error: fmt.Sprintf("Host %s has no storage pools", hostID),
+			})
+			return
+		}
+		if noNetworks {
+			writeJSON(w, http.StatusOK, validateHostResponse{
+				Valid: false,
+				Error: fmt.Sprintf("Host %s has no networks", hostID),
 			})
 			return
 		}
@@ -2800,6 +3223,42 @@ func (r *routerState) setupComplete() http.HandlerFunc {
 		}
 		if !containsHost(hosts, payload.DefaultHost) {
 			writeJSONError(w, http.StatusBadRequest, "default_host must be in hosts")
+			return
+		}
+
+		var validationFailures []string
+		for _, h := range hosts {
+			keyfile := ""
+			if h.Keyfile != nil {
+				keyfile = *h.Keyfile
+			}
+			conn, err := r.setupConnect(req.Context(), h.URI, keyfile)
+			if err != nil {
+				validationFailures = append(validationFailures, fmt.Sprintf("Host %s: %s", h.ID, sanitizeValidationError(err.Error())))
+				continue
+			}
+			pools, err := conn.ListPools(req.Context())
+			if err != nil {
+				conn.Close()
+				validationFailures = append(validationFailures, fmt.Sprintf("Host %s: %s", h.ID, sanitizeValidationError(err.Error())))
+				continue
+			}
+			networks, err := conn.ListNetworks(req.Context())
+			if err != nil {
+				conn.Close()
+				validationFailures = append(validationFailures, fmt.Sprintf("Host %s: %s", h.ID, sanitizeValidationError(err.Error())))
+				continue
+			}
+			conn.Close()
+			if len(pools) == 0 {
+				validationFailures = append(validationFailures, fmt.Sprintf("Host %s has no storage pools", h.ID))
+			}
+			if len(networks) == 0 {
+				validationFailures = append(validationFailures, fmt.Sprintf("Host %s has no networks", h.ID))
+			}
+		}
+		if len(validationFailures) > 0 {
+			writeJSONError(w, http.StatusBadRequest, strings.Join(validationFailures, ". "))
 			return
 		}
 

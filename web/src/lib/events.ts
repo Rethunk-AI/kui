@@ -2,6 +2,7 @@
  * SSE subscription to GET /api/events.
  * On host.offline, host.online, vm.state_changed — add to alerts and optionally toast.
  */
+import { apiFetch } from "./api";
 import { addAlert } from "./alerts";
 import { showToast } from "./toast";
 
@@ -85,6 +86,7 @@ export function subscribeToEvents(): () => void {
 
   es.onerror = () => {
     es.close();
+    apiFetch("/auth/me").catch(() => {});
   };
 
   return () => es.close();

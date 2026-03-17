@@ -126,3 +126,102 @@ func TestValidateSafe_ForbiddenQemuInit(t *testing.T) {
 		t.Errorf("expected forbidden qemu:init, got %q", err.Error())
 	}
 }
+
+func TestNetworksFromDomain_NoNetworkInterfaces(t *testing.T) {
+	xml := `<?xml version="1.0"?>
+<domain type="kvm">
+  <name>test-vm</name>
+  <uuid>uuid-vm</uuid>
+  <memory unit="KiB">1048576</memory>
+  <vcpu>1</vcpu>
+  <os><type arch="x86_64" machine="pc">hvm</type></os>
+  <devices><disk type="file"><source file="/var/lib/libvirt/images/test.qcow2"/></disk></devices>
+</domain>`
+	got, err := NetworksFromDomain(xml)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty slice, got %v", got)
+	}
+}
+
+func TestNetworksFromDomain_OneNetwork(t *testing.T) {
+	xml := `<?xml version="1.0"?>
+<domain type="kvm">
+  <name>test-vm</name>
+  <uuid>uuid-vm</uuid>
+  <memory unit="KiB">1048576</memory>
+  <vcpu>1</vcpu>
+  <os><type arch="x86_64" machine="pc">hvm</type></os>
+  <devices>
+    <interface type="network"><source network="default"/></interface>
+  </devices>
+</domain>`
+	got, err := NetworksFromDomain(xml)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0] != "default" {
+		t.Errorf("expected [default], got %v", got)
+	}
+}
+
+func TestNetworksFromDomain_MultipleNetworks(t *testing.T) {
+	xml := `<?xml version="1.0"?>
+<domain type="kvm">
+  <name>test-vm</name>
+  <uuid>uuid-vm</uuid>
+  <memory unit="KiB">1048576</memory>
+  <vcpu>1</vcpu>
+  <os><type arch="x86_64" machine="pc">hvm</type></os>
+  <devices>
+    <interface type="network"><source network="default"/></interface>
+    <interface type="network"><source network="bridge0"/></interface>
+    <interface type="network"><source network="default"/></interface>
+  </devices>
+</domain>`
+	got, err := NetworksFromDomain(xml)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("expected 2 unique networks, got %v", got)
+	}
+	// Order preserved, deduplicated
+	if got[0] != "default" || got[1] != "bridge0" {
+		t.Errorf("expected [default bridge0], got %v", got)
+	}
+}
+
+func TestNetworksFromDomain_InvalidXML(t *testing.T) {
+	xml := `<domain><name>x</domain`
+	_, err := NetworksFromDomain(xml)
+	if err == nil {
+		t.Error("expected error for invalid XML")
+	} else if !strings.Contains(err.Error(), "invalid domain XML") {
+		t.Errorf("expected 'invalid domain XML', got %q", err.Error())
+	}
+}
+
+func TestNetworksFromDomain_BridgeIgnored(t *testing.T) {
+	xml := `<?xml version="1.0"?>
+<domain type="kvm">
+  <name>test-vm</name>
+  <uuid>uuid-vm</uuid>
+  <memory unit="KiB">1048576</memory>
+  <vcpu>1</vcpu>
+  <os><type arch="x86_64" machine="pc">hvm</type></os>
+  <devices>
+    <interface type="bridge"><source bridge="br0"/></interface>
+    <interface type="network"><source network="default"/></interface>
+  </devices>
+</domain>`
+	got, err := NetworksFromDomain(xml)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0] != "default" {
+		t.Errorf("expected [default] (bridge ignored), got %v", got)
+	}
+}

@@ -47,3 +47,36 @@ func TestInitIdempotent(t *testing.T) {
 		t.Fatalf("second init (idempotent): %v", err)
 	}
 }
+
+func TestInit_EmptyPath(t *testing.T) {
+	t.Parallel()
+
+	err := Init("")
+	if err == nil {
+		t.Fatal("expected error for empty path")
+	}
+	if !contains(err.Error(), "git base path is required") {
+		t.Errorf("expected git base path error, got %v", err)
+	}
+}
+
+func TestInit_WhitespacePath(t *testing.T) {
+	t.Parallel()
+
+	err := Init("   ")
+	if err == nil {
+		t.Fatal("expected error for whitespace path")
+	}
+	if !contains(err.Error(), "git base path is required") {
+		t.Errorf("expected git base path error, got %v", err)
+	}
+}
+
+func contains(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return len(sub) == 0
+}

@@ -16,12 +16,12 @@
 
 ### Specs
 
-All 17 specs complete and in `specs/done/`:
+All 18 specs complete and in `specs/done/`:
 schema-storage, spec-libvirt-connector, spec-application-bootstrap, api-auth,
 spec-audit-integration, spec-vm-lifecycle-create, spec-frontend-build,
 spec-template-management, spec-console-realtime, spec-ui-deployment,
 feat-keyboard-shortcuts, feat-a11y, feat-stuck-vm, feat-orphan-bulk, feat-domain-xml-edit,
-gap-audit, coverage-100.
+gap-audit, coverage-100, feat-shadcn-ui.
 
 ### Active Specs
 
@@ -39,8 +39,8 @@ None.
 | Test | pass |
 | Vet | pass |
 | Active specs | 0 |
-| Done specs | 17 |
-| Per-spec task status | feat-a11y T1–T9 DONE; feat-stuck-vm T1–T5 DONE; gap-audit T1–T5 DONE; coverage-100 DONE (targets met within exclusions) |
+| Done specs | 18 |
+| Per-spec task status | feat-a11y T1–T9 DONE; feat-stuck-vm T1–T5 DONE; gap-audit T1–T5 DONE; coverage-100 DONE (targets met within exclusions); feat-shadcn-ui T1–T12 DONE |
 
 ### Remaining Implementation Tasks
 

@@ -14,6 +14,7 @@ import {
   type Volume,
 } from "../lib/api";
 import { addAlert } from "../lib/alerts";
+import { setupFocusTrap } from "../lib/focus-trap";
 import { renderInlineHostSelector } from "./InlineHostSelector";
 
 export interface CreateVMModalProps {
@@ -51,12 +52,18 @@ export function renderCreateVMModal(
   closeBtn.className = "modal__close";
   closeBtn.textContent = "×";
   closeBtn.setAttribute("aria-label", "Close");
-  closeBtn.addEventListener("click", onClose);
   header.appendChild(closeBtn);
   modal.appendChild(header);
 
   const form = document.createElement("form");
   form.className = "modal__form";
+
+  const formError = document.createElement("p");
+  formError.className = "modal__error";
+  formError.setAttribute("role", "alert");
+  formError.id = "create-vm-form-error";
+  formError.style.display = "none";
+  form.appendChild(formError);
 
   const hostSelectorContainer = document.createElement("div");
   hostSelectorContainer.className = "modal__field";
@@ -68,6 +75,8 @@ export function renderCreateVMModal(
       loadPoolsAndNetworks(id);
     },
     label: "Host",
+    required: true,
+    ariaDescribedBy: "create-vm-form-error",
   });
   form.appendChild(hostSelectorContainer);
 
@@ -76,7 +85,9 @@ export function renderCreateVMModal(
   const poolSelect = document.createElement("select");
   poolSelect.name = "pool";
   poolSelect.required = true;
+  poolSelect.setAttribute("aria-required", "true");
   poolSelect.setAttribute("aria-label", "Storage pool");
+  poolSelect.setAttribute("aria-describedby", "create-vm-form-error");
   const poolLabel = document.createElement("label");
   poolLabel.className = "modal__label";
   poolLabel.textContent = "Storage pool";
@@ -88,9 +99,12 @@ export function renderCreateVMModal(
 
   const diskModeGroup = document.createElement("div");
   diskModeGroup.className = "modal__field";
+  diskModeGroup.setAttribute("role", "radiogroup");
   const diskModeLabel = document.createElement("span");
   diskModeLabel.className = "modal__label";
+  diskModeLabel.id = "create-vm-disk-label";
   diskModeLabel.textContent = "Disk";
+  diskModeGroup.setAttribute("aria-labelledby", "create-vm-disk-label");
   diskModeGroup.appendChild(diskModeLabel);
   const diskExisting = document.createElement("input");
   diskExisting.type = "radio";
@@ -118,6 +132,7 @@ export function renderCreateVMModal(
   const volumeSelect = document.createElement("select");
   volumeSelect.name = "volume";
   volumeSelect.setAttribute("aria-label", "Volume");
+  volumeSelect.setAttribute("aria-describedby", "create-vm-form-error");
   const volumeLabel = document.createElement("label");
   volumeLabel.className = "modal__label";
   volumeLabel.textContent = "Volume";
@@ -134,6 +149,7 @@ export function renderCreateVMModal(
   sizeLabel.className = "modal__label";
   sizeLabel.textContent = "Size (MB)";
   const sizeInput = document.createElement("input");
+  sizeInput.setAttribute("aria-describedby", "create-vm-form-error");
   sizeInput.type = "number";
   sizeInput.name = "size_mb";
   sizeInput.min = "1";
@@ -260,7 +276,6 @@ export function renderCreateVMModal(
   const cancelBtn = document.createElement("button");
   cancelBtn.type = "button";
   cancelBtn.textContent = "Cancel";
-  cancelBtn.addEventListener("click", onClose);
   const submitBtn = document.createElement("button");
   submitBtn.type = "submit";
   submitBtn.textContent = "Create";
@@ -268,16 +283,33 @@ export function renderCreateVMModal(
   footer.appendChild(submitBtn);
   form.appendChild(footer);
 
+  const hostSelect = hostSelectorContainer.querySelector("select");
+  const clearInvalid = (): void => {
+    formError.textContent = "";
+    formError.style.display = "none";
+    hostSelect?.removeAttribute("aria-invalid");
+    poolSelect.removeAttribute("aria-invalid");
+    volumeSelect.removeAttribute("aria-invalid");
+    sizeInput.removeAttribute("aria-invalid");
+  };
+  const showError = (msg: string, field: HTMLElement): void => {
+    clearInvalid();
+    formError.textContent = msg;
+    formError.style.display = "";
+    field.setAttribute("aria-invalid", "true");
+  };
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    clearInvalid();
     const hostId = selectedHostIdRef.current;
     if (!hostId) {
-      addAlert("create_failure", "Select a host", undefined);
+      showError("Select a host", hostSelect ?? formError);
       return;
     }
     const pool = poolSelect.value?.trim();
     if (!pool) {
-      addAlert("create_failure", "Select a storage pool", undefined);
+      showError("Select a storage pool", poolSelect);
       return;
     }
     const isExisting = diskExisting.checked;
@@ -286,13 +318,13 @@ export function renderCreateVMModal(
     if (isExisting) {
       diskName = volumeSelect.value?.trim() ?? "";
       if (!diskName) {
-        addAlert("create_failure", "Select a volume", undefined);
+        showError("Select a volume", volumeSelect);
         return;
       }
     } else {
       sizeMB = parseInt(sizeInput.value, 10);
       if (!Number.isFinite(sizeMB) || sizeMB <= 0) {
-        addAlert("create_failure", "Enter a valid disk size (MB)", undefined);
+        showError("Enter a valid disk size (MB)", sizeInput);
         return;
       }
     }
@@ -306,12 +338,14 @@ export function renderCreateVMModal(
         display_name: displayNameInput.value?.trim() || undefined,
       });
       onSuccess();
-      onClose();
+      wrappedOnClose();
     } catch (err) {
       submitBtn.disabled = false;
+      const msg = err instanceof ApiError ? err.message : "Failed to create VM";
+      showError(msg, poolSelect);
       addAlert(
         "create_failure",
-        err instanceof ApiError ? err.message : "Failed to create VM",
+        msg,
         err instanceof ApiError ? String(err.status) : undefined
       );
     }
@@ -320,17 +354,26 @@ export function renderCreateVMModal(
   modal.appendChild(form);
   overlay.appendChild(modal);
 
+  const cleanupFocusTrap = setupFocusTrap(overlay);
+  const wrappedOnClose = (): void => {
+    cleanupFocusTrap();
+    onClose();
+  };
+
   overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) onClose();
+    if (e.target === overlay) wrappedOnClose();
   });
 
   overlay.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      onClose();
+      wrappedOnClose();
     }
   });
+
+  closeBtn.addEventListener("click", wrappedOnClose);
+  cancelBtn.addEventListener("click", wrappedOnClose);
 
   container.appendChild(overlay);
   toggleDiskFields();

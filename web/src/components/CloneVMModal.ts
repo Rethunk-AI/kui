@@ -10,6 +10,7 @@ import {
   type VM,
 } from "../lib/api";
 import { addAlert } from "../lib/alerts";
+import { setupFocusTrap } from "../lib/focus-trap";
 import { renderInlineHostSelector } from "./InlineHostSelector";
 
 export interface CloneVMModalProps {
@@ -49,12 +50,18 @@ export function renderCloneVMModal(
   closeBtn.className = "modal__close";
   closeBtn.textContent = "×";
   closeBtn.setAttribute("aria-label", "Close");
-  closeBtn.addEventListener("click", onClose);
   header.appendChild(closeBtn);
   modal.appendChild(header);
 
   const form = document.createElement("form");
   form.className = "modal__form";
+
+  const formError = document.createElement("p");
+  formError.className = "modal__error";
+  formError.setAttribute("role", "alert");
+  formError.id = "clone-vm-form-error";
+  formError.style.display = "none";
+  form.appendChild(formError);
 
   const sourceInfo = document.createElement("div");
   sourceInfo.className = "modal__field";
@@ -74,6 +81,8 @@ export function renderCloneVMModal(
       loadPools(id);
     },
     label: "Target host",
+    required: true,
+    ariaDescribedBy: "clone-vm-form-error",
   });
   form.appendChild(hostSelectorContainer);
 
@@ -82,7 +91,9 @@ export function renderCloneVMModal(
   const poolSelect = document.createElement("select");
   poolSelect.name = "target_pool";
   poolSelect.required = true;
+  poolSelect.setAttribute("aria-required", "true");
   poolSelect.setAttribute("aria-label", "Target pool");
+  poolSelect.setAttribute("aria-describedby", "clone-vm-form-error");
   const poolLabel = document.createElement("label");
   poolLabel.className = "modal__label";
   poolLabel.textContent = "Target pool";
@@ -96,6 +107,7 @@ export function renderCloneVMModal(
   nameInput.type = "text";
   nameInput.name = "target_name";
   nameInput.placeholder = `${sourceVM.display_name ?? sourceVM.libvirt_uuid}-clone`;
+  nameInput.setAttribute("aria-describedby", "clone-vm-form-error");
   const nameLabel = document.createElement("label");
   nameLabel.className = "modal__label";
   nameLabel.textContent = "Clone name";
@@ -135,7 +147,6 @@ export function renderCloneVMModal(
   const cancelBtn = document.createElement("button");
   cancelBtn.type = "button";
   cancelBtn.textContent = "Cancel";
-  cancelBtn.addEventListener("click", onClose);
   const submitBtn = document.createElement("button");
   submitBtn.type = "submit";
   submitBtn.textContent = "Clone";
@@ -143,16 +154,32 @@ export function renderCloneVMModal(
   footer.appendChild(submitBtn);
   form.appendChild(footer);
 
+  const hostSelect = hostSelectorContainer.querySelector("select");
+  const clearInvalid = (): void => {
+    formError.textContent = "";
+    formError.style.display = "none";
+    hostSelect?.removeAttribute("aria-invalid");
+    poolSelect.removeAttribute("aria-invalid");
+    nameInput.removeAttribute("aria-invalid");
+  };
+  const showError = (msg: string, field: HTMLElement): void => {
+    clearInvalid();
+    formError.textContent = msg;
+    formError.style.display = "";
+    field.setAttribute("aria-invalid", "true");
+  };
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    clearInvalid();
     const targetHostId = selectedHostIdRef.current;
     if (!targetHostId) {
-      addAlert("clone_failure", "Select a target host", undefined);
+      showError("Select a target host", hostSelect ?? formError);
       return;
     }
     const targetPool = poolSelect.value?.trim();
     if (!targetPool) {
-      addAlert("clone_failure", "Select a target pool", undefined);
+      showError("Select a target pool", poolSelect);
       return;
     }
     submitBtn.disabled = true;
@@ -163,12 +190,14 @@ export function renderCloneVMModal(
         target_name: nameInput.value?.trim() || undefined,
       });
       onSuccess();
-      onClose();
+      wrappedOnClose();
     } catch (err) {
       submitBtn.disabled = false;
+      const msg = err instanceof ApiError ? err.message : "Failed to clone VM";
+      showError(msg, poolSelect);
       addAlert(
         "clone_failure",
-        err instanceof ApiError ? err.message : "Failed to clone VM",
+        msg,
         err instanceof ApiError ? String(err.status) : undefined
       );
     }
@@ -177,17 +206,26 @@ export function renderCloneVMModal(
   modal.appendChild(form);
   overlay.appendChild(modal);
 
+  const cleanupFocusTrap = setupFocusTrap(overlay);
+  const wrappedOnClose = (): void => {
+    cleanupFocusTrap();
+    onClose();
+  };
+
   overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) onClose();
+    if (e.target === overlay) wrappedOnClose();
   });
 
   overlay.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      onClose();
+      wrappedOnClose();
     }
   });
+
+  closeBtn.addEventListener("click", wrappedOnClose);
+  cancelBtn.addEventListener("click", wrappedOnClose);
 
   container.appendChild(overlay);
 }

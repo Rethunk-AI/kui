@@ -2,6 +2,8 @@
  * Shortcut help overlay. Lists keyboard shortcuts.
  * Spec feat-keyboard-shortcuts Task 6.
  */
+import { setupFocusTrap } from "../lib/focus-trap";
+
 export interface ShortcutHelpProps {
   visible: boolean;
   onClose: () => void;
@@ -48,7 +50,6 @@ export function renderShortcutHelp(
   closeBtn.className = "shortcut-help__close";
   closeBtn.textContent = "×";
   closeBtn.setAttribute("aria-label", "Close");
-  closeBtn.addEventListener("click", props.onClose);
   header.appendChild(closeBtn);
   panel.appendChild(header);
 
@@ -68,17 +69,25 @@ export function renderShortcutHelp(
 
   overlay.appendChild(panel);
 
+  const cleanupFocusTrap = setupFocusTrap(overlay);
+  const wrappedOnClose = (): void => {
+    cleanupFocusTrap();
+    props.onClose();
+  };
+
   overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) props.onClose();
+    if (e.target === overlay) wrappedOnClose();
   });
 
   overlay.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      props.onClose();
+      wrappedOnClose();
     }
   });
+
+  closeBtn.addEventListener("click", wrappedOnClose);
 
   container.appendChild(overlay);
 }

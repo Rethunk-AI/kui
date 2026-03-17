@@ -5,6 +5,21 @@
 
 const TOAST_DURATION_MS = 4000;
 const TOAST_CONTAINER_ID = "kui-toast-container";
+const TOAST_ANNOUNCER_ID = "kui-toast-announcer";
+
+function ensureAnnouncer(): HTMLElement {
+  let el = document.getElementById(TOAST_ANNOUNCER_ID);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = TOAST_ANNOUNCER_ID;
+    el.setAttribute("aria-live", "polite");
+    el.setAttribute("aria-atomic", "true");
+    el.setAttribute("role", "status");
+    el.className = "sr-only";
+    document.body.appendChild(el);
+  }
+  return el;
+}
 
 function ensureContainer(): HTMLElement {
   let el = document.getElementById(TOAST_CONTAINER_ID);
@@ -18,6 +33,12 @@ function ensureContainer(): HTMLElement {
 }
 
 export function showToast(message: string, type: "info" | "success" | "warn" = "info"): void {
+  const announcer = ensureAnnouncer();
+  announcer.textContent = message;
+  setTimeout(() => {
+    announcer.textContent = "";
+  }, 1000);
+
   const container = ensureContainer();
   const toast = document.createElement("div");
   toast.className = `toast toast--${type}`;

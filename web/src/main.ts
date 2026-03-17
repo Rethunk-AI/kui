@@ -35,6 +35,15 @@ const appEl = document.getElementById("app");
 if (!appEl) throw new Error("app element missing");
 const app: HTMLElement = appEl;
 
+function injectSkipLink(): void {
+  const skip = document.createElement("a");
+  skip.href = "#main-content";
+  skip.textContent = "Skip to main content";
+  skip.className = "skip-link";
+  document.body.insertBefore(skip, document.body.firstChild);
+}
+injectSkipLink();
+
 async function bootstrap(): Promise<void> {
   let vmsResp: VMsResponse;
   let preferences: Preferences | null = null;
@@ -110,6 +119,7 @@ function renderMain(
   header.className = "app-header";
   const nav = document.createElement("nav");
   nav.className = "app-nav";
+  nav.setAttribute("aria-label", "Main navigation");
 
   const hostSelectorEl = document.createElement("div");
   const selectedHostId =
@@ -154,6 +164,8 @@ function renderMain(
   layout.appendChild(alertsPanelWrapper);
 
   const content = document.createElement("main");
+  content.id = "main-content";
+  content.tabIndex = -1;
   content.className = "app-content";
 
   const modalContainer = document.createElement("div");
@@ -262,17 +274,30 @@ function renderMain(
 
 function renderLoginPage(container: HTMLElement, onSuccess: () => void): void {
   container.innerHTML = "";
+  const main = document.createElement("main");
+  main.id = "main-content";
+  main.tabIndex = -1;
+  main.className = "app-content";
   const form = document.createElement("form");
   form.className = "login-form";
   form.innerHTML = `
-    <h2>Log in</h2>
-    <label>Username <input type="text" name="username" required autocomplete="username" /></label>
-    <label>Password <input type="password" name="password" required autocomplete="current-password" /></label>
+    <h1>Log in</h1>
+    <label for="login-username">Username</label>
+    <input id="login-username" type="text" name="username" required aria-required="true" autocomplete="username" aria-describedby="login-error" />
+    <label for="login-password">Password</label>
+    <input id="login-password" type="password" name="password" required aria-required="true" autocomplete="current-password" aria-describedby="login-error" />
     <button type="submit">Log in</button>
-    <p class="login-error" role="alert"></p>
+    <p id="login-error" class="login-error" role="alert" aria-live="polite"></p>
   `;
 
-  const errorEl = form.querySelector(".login-error") as HTMLParagraphElement;
+  const errorEl = form.querySelector("#login-error") as HTMLParagraphElement;
+  const usernameInput = form.querySelector("#login-username") as HTMLInputElement;
+  const passwordInput = form.querySelector("#login-password") as HTMLInputElement;
+
+  const clearInvalid = (): void => {
+    usernameInput.removeAttribute("aria-invalid");
+    passwordInput.removeAttribute("aria-invalid");
+  };
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -282,16 +307,20 @@ function renderLoginPage(container: HTMLElement, onSuccess: () => void): void {
     if (!username || !password) return;
 
     errorEl.textContent = "";
+    clearInvalid();
     try {
       await login(username, password);
       onSuccess();
     } catch (err) {
-      errorEl.textContent =
-        err instanceof ApiError ? err.message : "Login failed";
+      const msg = err instanceof ApiError ? err.message : "Login failed";
+      errorEl.textContent = msg;
+      usernameInput.setAttribute("aria-invalid", "true");
+      passwordInput.setAttribute("aria-invalid", "true");
     }
   });
 
-  container.appendChild(form);
+  main.appendChild(form);
+  container.appendChild(main);
 }
 
 bootstrap().catch((err) => {

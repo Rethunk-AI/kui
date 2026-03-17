@@ -13,9 +13,19 @@ export interface WinBoxOptions {
 
 interface WinBoxInstance {
   close: () => void;
+  /** Root DOM element (WinBox internal API) */
+  window?: HTMLElement;
 }
 
 const openWinBoxes: WinBoxInstance[] = [];
+
+function setCloseButtonAriaLabel(instance: WinBoxInstance): void {
+  const root = (instance as { window?: HTMLElement }).window;
+  const closeBtn = root?.querySelector(".wb-close");
+  if (closeBtn instanceof HTMLElement) {
+    closeBtn.setAttribute("aria-label", "Close");
+  }
+}
 
 export function openWinBox(
   title: string,
@@ -34,6 +44,7 @@ export function openWinBox(
     },
   };
   instance = new WinBox(title, opts) as WinBoxInstance;
+  setCloseButtonAriaLabel(instance);
   openWinBoxes.push(instance);
   return instance;
 }

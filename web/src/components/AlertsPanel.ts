@@ -10,6 +10,16 @@ import {
   type AlertType,
 } from "../lib/alerts";
 
+const CRITICAL_TYPES: Set<AlertType> = new Set([
+  "host_offline",
+  "host_connection_error",
+  "create_failure",
+  "clone_failure",
+  "console_failure",
+  "vm_state_failure",
+  "api_error",
+]);
+
 const TYPE_LABELS: Record<AlertType, string> = {
   host_offline: "Host offline",
   host_online: "Host online",
@@ -34,10 +44,12 @@ function formatTime(ts: number): string {
 export function renderAlertsPanel(container: HTMLElement): () => void {
   container.innerHTML = "";
   container.className = "alerts-panel";
+  container.setAttribute("aria-live", "polite");
+  container.setAttribute("role", "status");
 
   const header = document.createElement("div");
   header.className = "alerts-panel__header";
-  const title = document.createElement("h3");
+  const title = document.createElement("h2");
   title.textContent = "Alerts";
   title.className = "alerts-panel__title";
   header.appendChild(title);
@@ -56,6 +68,8 @@ export function renderAlertsPanel(container: HTMLElement): () => void {
   container.appendChild(list);
 
   function renderList(alerts: Alert[]): void {
+    const hasCritical = alerts.some((a) => CRITICAL_TYPES.has(a.type));
+    container.setAttribute("aria-live", hasCritical ? "assertive" : "polite");
     list.innerHTML = "";
     for (const a of alerts) {
       const li = document.createElement("li");

@@ -11,6 +11,8 @@ export interface InlineHostSelectorProps {
   onChange: (hostId: string) => void;
   label?: string;
   disabled?: boolean;
+  required?: boolean;
+  ariaDescribedBy?: string;
 }
 
 export function renderInlineHostSelector(
@@ -29,6 +31,13 @@ export function renderInlineHostSelector(
   select.className = "inline-host-selector__select";
   select.disabled = props.disabled ?? false;
   select.setAttribute("aria-label", props.label ?? "Host");
+  if (props.required) {
+    select.required = true;
+    select.setAttribute("aria-required", "true");
+  }
+  if (props.ariaDescribedBy) {
+    select.setAttribute("aria-describedby", props.ariaDescribedBy);
+  }
 
   if (props.hosts.length === 0) {
     const opt = document.createElement("option");

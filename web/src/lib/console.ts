@@ -1,7 +1,29 @@
 /**
  * Console launcher: noVNC/xterm window orchestration.
  * Spec §2: Winbox.js canvas, noVNC primary, xterm.js fallback.
+ *
+ * ## Keyboard and focus behavior
+ *
+ * - **noVNC (VNC console):** When the console has focus, all keyboard input is sent to the
+ *   guest VM. The noVNC canvas captures focus; there is no host-side keyboard trap.
+ * - **xterm.js (serial console):** When the terminal has focus, all keyboard input is sent
+ *   to the guest via the WebSocket. term.focus() is called on WebSocket open.
+ *
+ * ## Focus management
+ *
+ * - **On open:** Focus moves to the console (noVNC canvas or xterm). The user can
+ *   immediately type into the guest.
+ * - **On close:** Focus is restored to #main-content so keyboard navigation continues
+ *   in the host UI. The main element must have tabindex="-1" to receive programmatic focus.
  */
+
+function restoreFocusOnClose(): void {
+  const main = document.getElementById("main-content");
+  if (main instanceof HTMLElement) {
+    main.focus();
+  }
+}
+
 import RFB from "@novnc/novnc";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -45,6 +67,7 @@ function createVncContainer(
 ): { container: HTMLElement; cleanup: () => void } {
   const container = document.createElement("div");
   container.className = "console-container console-container--vnc";
+  container.setAttribute("aria-label", "VNC console — VM display");
   container.style.cssText =
     "width:100%;height:100%;min-height:200px;background:rgb(40,40,40);";
 
@@ -84,6 +107,7 @@ function createSerialContainer(
 ): { container: HTMLElement; cleanup: () => void } {
   const container = document.createElement("div");
   container.className = "console-container console-container--serial";
+  container.setAttribute("aria-label", "Serial console — VM terminal");
   container.style.cssText =
     "width:100%;height:100%;min-height:200px;padding:8px;box-sizing:border-box;";
 
@@ -173,6 +197,7 @@ export function openConsole(opts: OpenConsoleOptions): void {
     openWinBox(title, container, {
       onclose: () => {
         cleanup();
+        restoreFocusOnClose();
         return false;
       },
     });
@@ -197,6 +222,7 @@ export function openConsole(opts: OpenConsoleOptions): void {
     openWinBox(title, container, {
       onclose: () => {
         cleanup();
+        restoreFocusOnClose();
         return false;
       },
     });

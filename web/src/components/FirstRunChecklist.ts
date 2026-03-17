@@ -31,7 +31,7 @@ export function renderFirstRunChecklist(
   const section = document.createElement("section");
   section.className = "first-run-checklist";
 
-  const title = document.createElement("h2");
+  const title = document.createElement("h1");
   title.textContent = "Get started";
   section.appendChild(title);
 

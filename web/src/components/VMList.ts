@@ -112,6 +112,11 @@ export function renderVMList(
   const vmListEl = document.createElement("div");
   vmListEl.className = "vm-list";
 
+  const pageTitle = document.createElement("h1");
+  pageTitle.className = "vm-list__title";
+  pageTitle.textContent = "Virtual machines";
+  vmListEl.appendChild(pageTitle);
+
   const headerRow = document.createElement("div");
   headerRow.className = "vm-list__header-row";
   if (onOpenCreateModal) {
@@ -176,7 +181,7 @@ export function renderVMList(
     });
 
     for (const [key, vms] of grouped) {
-      const header = document.createElement("h3");
+      const header = document.createElement("h2");
       header.className = "vm-list__group-header";
       header.textContent = formatGroupHeader(key);
       listboxContainer.appendChild(header);
@@ -245,13 +250,18 @@ export function renderVMList(
   if (data.orphans.length > 0) {
     const orphansSection = document.createElement("section");
     orphansSection.className = "vm-list-orphans";
+    orphansSection.setAttribute("aria-labelledby", "orphans-heading");
     const orphansHeader = document.createElement("div");
     orphansHeader.className = "vm-list-orphans__header";
-    orphansHeader.innerHTML = `
+    const orphansTitle = document.createElement("h2");
+    orphansTitle.id = "orphans-heading";
+    orphansTitle.className = "vm-list-orphans__title";
+    orphansTitle.innerHTML = `
       <button type="button" class="vm-list-orphans__toggle" aria-expanded="true">
         Orphan VMs (${data.orphans.length})
       </button>
     `;
+    orphansHeader.appendChild(orphansTitle);
     const orphansBody = document.createElement("div");
     orphansBody.className = "vm-list-orphans__body";
     const orphansList = document.createElement("ul");

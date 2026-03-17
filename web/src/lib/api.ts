@@ -30,6 +30,7 @@ export interface Preferences {
   list_view_options?: {
     list_view?: { sort?: string; page_size?: number; group_by?: string };
     onboarding_dismissed?: boolean;
+    theme?: "dark" | "light" | null;
   } | null;
 }
 
@@ -219,7 +220,10 @@ export async function login(username: string, password: string): Promise<void> {
 
 export async function putPreferences(body: {
   default_host_id?: string | null;
-  list_view_options?: { onboarding_dismissed?: boolean };
+  list_view_options?: {
+    onboarding_dismissed?: boolean;
+    theme?: "dark" | "light" | null;
+  };
 }): Promise<Preferences> {
   return apiFetch<Preferences>("/preferences", {
     method: "PUT",

@@ -99,6 +99,10 @@ async function bootstrap(): Promise<void> {
     throw e;
   }
 
+  document.documentElement.setAttribute(
+    "data-theme",
+    preferences?.list_view_options?.theme === "light" ? "light" : "dark"
+  );
   renderMain(app, vmsResp, preferences, hosts, bootstrap);
 }
 
@@ -174,6 +178,33 @@ function renderMain(
     },
   });
   nav.appendChild(hostSelectorEl);
+
+  const currentTheme =
+    preferences?.list_view_options?.theme === "light" ? "light" : "dark";
+  const themeToggle = document.createElement("button");
+  themeToggle.type = "button";
+  themeToggle.className = "theme-toggle";
+  themeToggle.textContent = currentTheme === "dark" ? "Light" : "Dark";
+  themeToggle.setAttribute("aria-label", "Toggle theme");
+  themeToggle.addEventListener("click", async () => {
+    const next = currentTheme === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    themeToggle.textContent = next === "dark" ? "Light" : "Dark";
+    try {
+      const prefs = await putPreferences({
+        list_view_options: { theme: next },
+      });
+      renderMain(container, vmsResp, prefs, hosts, onDataChange);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) return;
+      document.documentElement.setAttribute("data-theme", currentTheme);
+      themeToggle.textContent = currentTheme === "dark" ? "Light" : "Dark";
+      const msg =
+        err instanceof ApiError ? err.message : "Failed to save theme preference";
+      addAlert("api_error", msg, err instanceof ApiError ? String(err.status) : undefined);
+    }
+  });
+  nav.appendChild(themeToggle);
 
   const alertsToggle = document.createElement("button");
   alertsToggle.type = "button";

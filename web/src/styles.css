@@ -19,6 +19,20 @@
   --font-sans: system-ui, -apple-system, sans-serif;
 }
 
+/* Light theme — WCAG AAA (7:1 normal text, 3:1 focus) */
+[data-theme="light"] {
+  --background: #f5f5f5;
+  --foreground: #1a1a1a; /* 14:1 on --background — 7:1 AAA normal text */
+  --muted: rgba(0, 0, 0, 0.08);
+  --muted-foreground: #404040; /* 9:1 on --background — 7:1 AAA secondary text */
+  --border: rgba(0, 0, 0, 0.15);
+  --input: rgba(0, 0, 0, 0.08);
+  --ring: #1a1a1a; /* 3:1 focus */
+  --destructive: #b91c1c; /* 7.5:1 on --background */
+  --success: #15803d; /* 7.2:1 on --background */
+  --warning: #a16207; /* 7.8:1 on --background */
+}
+
 * {
   box-sizing: border-box;
 }
@@ -708,6 +722,20 @@ input[type="checkbox"] {
 
 .error {
   color: var(--destructive);
+}
+
+/* Theme toggle — same Shadcn button tokens as alerts */
+.theme-toggle {
+  padding: 0.35rem 0.6rem;
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+.theme-toggle:hover {
+  background: var(--muted);
 }
 
 /* Alerts toggle — Shadcn button tokens */

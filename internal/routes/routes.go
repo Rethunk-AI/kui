@@ -165,6 +165,7 @@ type provisionHostRequest struct {
 type listViewOptions struct {
 	ListView           *listView `json:"list_view,omitempty"`
 	OnboardingDismissed *bool     `json:"onboarding_dismissed,omitempty"`
+	Theme              *string   `json:"theme,omitempty"`
 }
 
 type listView struct {
@@ -653,6 +654,12 @@ func (r *routerState) putPreferences() http.HandlerFunc {
 			}
 			if payload.ListViewOptions.OnboardingDismissed != nil {
 				mergedOpts.OnboardingDismissed = payload.ListViewOptions.OnboardingDismissed
+			}
+			if payload.ListViewOptions.Theme != nil {
+				t := strings.TrimSpace(*payload.ListViewOptions.Theme)
+				if t == "dark" || t == "light" {
+					mergedOpts.Theme = &t
+				}
 			}
 		}
 		optsJSON, err := json.Marshal(mergedOpts)

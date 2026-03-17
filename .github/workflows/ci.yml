@@ -87,6 +87,30 @@ jobs:
             coverage.out
             coverage.html
 
+  web-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "yarn"
+          cache-dependency-path: web/yarn.lock
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install and run web tests with coverage
+        run: make web-coverage
+
+      - name: Upload web coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage
+          path: web/coverage/
+
   web-a11y:
     runs-on: ubuntu-latest
     steps:

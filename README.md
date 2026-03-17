@@ -35,6 +35,25 @@ Run the libvirt connector integration test against `test:///default` with:
 go test -tags libvirt ./internal/libvirtconn/...
 ```
 
+## Coverage
+
+**Go**
+
+```bash
+make coverage          # Generate coverage.out
+make coverage-report   # Generate coverage.out + coverage.html + text summary
+```
+
+**Web**
+
+```bash
+make web-coverage      # Run Vitest with coverage (output in web/coverage/)
+```
+
+Or from the web directory: `yarn test:coverage`.
+
+CI uploads Go coverage (`coverage.out`, `coverage.html`) and web coverage (`web/coverage/`) as artifacts.
+
 ## Contributing
 
 Open an issue or merge request. See [SECURITY.md](SECURITY.md) for vulnerability reporting.

@@ -1,4 +1,7 @@
 bin/
+coverage.out
+coverage.html
+web/coverage/
 web/node_modules/
 web/.yarn/
 web/.pnp.*

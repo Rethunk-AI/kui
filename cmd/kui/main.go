@@ -20,6 +20,7 @@ import (
 	"github.com/kui/kui/internal/db"
 	"github.com/kui/kui/internal/git"
 	"github.com/kui/kui/internal/libvirtconn"
+	"github.com/kui/kui/internal/prefix"
 	"github.com/kui/kui/internal/routes"
 )
 
@@ -41,11 +42,12 @@ func (f *trackedFlag) Set(value string) error {
 }
 
 type startupOptions struct {
-	configPath   string
-	configSource string // "--config", "env", or "default"
-	listen       string
-	tlsCert      string
-	tlsKey       string
+	configPath      string
+	configSource    string // "--config", "env", or "default"
+	bootstrapPrefix string // trimmed effective prefix (--prefix or KUI_PREFIX)
+	listen          string
+	tlsCert         string
+	tlsKey          string
 }
 
 type application struct {
@@ -92,13 +94,22 @@ func run(args []string, logger *slog.Logger) error {
 		_ = app.shutdown(ctx)
 	}()
 
-	listener, err := app.startServer(opts.listen, opts.tlsCert, opts.tlsKey)
+	tlsCert, tlsKey := opts.tlsCert, opts.tlsKey
+	if b := strings.TrimSpace(opts.bootstrapPrefix); b != "" {
+		if tlsCert != "" {
+			tlsCert = prefix.Resolve(b, tlsCert)
+		}
+		if tlsKey != "" {
+			tlsKey = prefix.Resolve(b, tlsKey)
+		}
+	}
+	listener, err := app.startServer(opts.listen, tlsCert, tlsKey)
 	if err != nil {
 		return err
 	}
 	logger.Info("KUI listening on", "addr", listener.Addr().String())
-	if opts.tlsCert != "" {
-		logger.Info("TLS enabled", "cert", opts.tlsCert, "key", opts.tlsKey)
+	if tlsCert != "" {
+		logger.Info("TLS enabled", "cert", tlsCert, "key", tlsKey)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -126,6 +137,7 @@ func parseFlags(args []string) (startupOptions, error) {
 	var options startupOptions
 
 	configPathFlag := &trackedFlag{value: config.DefaultConfigPath}
+	prefixFlag := &trackedFlag{}
 	listenFlag := &trackedFlag{value: defaultListenAddress}
 	tlsCertFlag := &trackedFlag{}
 	tlsKeyFlag := &trackedFlag{}
@@ -133,6 +145,7 @@ func parseFlags(args []string) (startupOptions, error) {
 	flagSet := flag.NewFlagSet("kui", flag.ContinueOnError)
 	flagSet.SetOutput(io.Discard)
 	flagSet.Var(configPathFlag, "config", "path to yaml config file")
+	flagSet.Var(prefixFlag, "prefix", "runtime filesystem root (chroot-style path resolution)")
 	flagSet.Var(listenFlag, "listen", "listen address")
 	flagSet.Var(tlsCertFlag, "tls-cert", "path to TLS cert")
 	flagSet.Var(tlsKeyFlag, "tls-key", "path to TLS key")
@@ -158,6 +171,11 @@ func parseFlags(args []string) (startupOptions, error) {
 		listen = envListen
 	}
 
+	bootstrapPrefix := strings.TrimSpace(prefixFlag.value)
+	if !prefixFlag.set {
+		bootstrapPrefix = strings.TrimSpace(os.Getenv("KUI_PREFIX"))
+	}
+
 	if listen == "" {
 		return startupOptions{}, fmt.Errorf("listen address is required")
 	}
@@ -166,22 +184,39 @@ func parseFlags(args []string) (startupOptions, error) {
 	}
 
 	options = startupOptions{
-		configPath:   configPath,
-		configSource: configSource,
-		listen:       listen,
-		tlsCert:      tlsCert,
-		tlsKey:       tlsKey,
+		configPath:      configPath,
+		configSource:    configSource,
+		bootstrapPrefix: bootstrapPrefix,
+		listen:          listen,
+		tlsCert:         tlsCert,
+		tlsKey:          tlsKey,
 	}
 	return options, nil
 }
 
 func buildApplication(opts startupOptions, logger *slog.Logger) (*application, error) {
-	configExists := false
-	cfgPath := strings.TrimSpace(opts.configPath)
-	if cfgPath == "" {
-		cfgPath = config.DefaultConfigPath
+	bootstrap := strings.TrimSpace(opts.bootstrapPrefix)
+	if bootstrap != "" {
+		st, err := os.Stat(bootstrap)
+		if err != nil {
+			return nil, fmt.Errorf("prefix %q: %w", bootstrap, err)
+		}
+		if !st.IsDir() {
+			return nil, fmt.Errorf("prefix %q is not a directory", bootstrap)
+		}
 	}
 
+	candidateCfgPath := strings.TrimSpace(opts.configPath)
+	if candidateCfgPath == "" {
+		candidateCfgPath = config.DefaultConfigPath
+	}
+	// Path used for Stat and ReadFile; with bootstrap set this is prefix.Resolve(bootstrap, candidate).
+	cfgPath := candidateCfgPath
+	if bootstrap != "" {
+		cfgPath = prefix.Resolve(bootstrap, candidateCfgPath)
+	}
+
+	configExists := false
 	if statErr := getFileStatError(cfgPath); statErr == nil {
 		configExists = true
 	} else if !errors.Is(statErr, os.ErrNotExist) {
@@ -193,7 +228,7 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 	var gitPath string
 
 	if configExists {
-		loaded, err := config.Load(cfgPath)
+		loaded, err := config.LoadWithOptions(candidateCfgPath, config.LoadOptions{BootstrapPrefix: bootstrap})
 		if err != nil {
 			logger.Warn("config load failed, falling back to setup mode", "path", cfgPath, "err", err)
 			appConfig = nil
@@ -208,6 +243,7 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 	if appConfig != nil {
 		mode = "configured"
 	}
+	// config_path is the on-disk path used for stat/load (equals logical candidate when prefix is empty).
 	logger.Info("KUI startup", "config_source", opts.configSource, "config_path", cfgPath, "mode", mode)
 
 	if appConfig == nil {
@@ -218,6 +254,10 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 		gitPath = strings.TrimSpace(os.Getenv("KUI_GIT_PATH"))
 		if gitPath == "" {
 			gitPath = "/var/lib/kui"
+		}
+		if bootstrap != "" {
+			dbPath = prefix.Resolve(bootstrap, dbPath)
+			gitPath = prefix.Resolve(bootstrap, gitPath)
 		}
 	}
 
@@ -237,6 +277,10 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 		}
 	}
 
+	webPathPrefix := bootstrap
+	if webPathPrefix == "" && appConfig != nil {
+		webPathPrefix = strings.TrimSpace(appConfig.Runtime.Prefix)
+	}
 	routerOpts := routes.RouterOptions{
 		Logger:        logger,
 		DB:            database,
@@ -245,6 +289,7 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 		ConfigPresent: appConfig != nil,
 		DBPath:        dbPath,
 		GitPath:       gitPath,
+		PathPrefix:    webPathPrefix,
 	}
 	if libvirtconn.SetupTestConnectorEnabled() {
 		conn := libvirtconn.SetupTestConnector()
@@ -262,7 +307,7 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 		server: &http.Server{
 			Handler: mux,
 		},
-		dbPath: dbPath,
+		dbPath:  dbPath,
 		gitPath: gitPath,
 	}, nil
 }
@@ -313,4 +358,3 @@ func closeDatabase(database *db.DB) error {
 	}
 	return database.Close()
 }
-

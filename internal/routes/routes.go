@@ -23,19 +23,20 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
-	"libvirt.org/go/libvirtxml"
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
+	"libvirt.org/go/libvirtxml"
 
 	"github.com/kui/kui/internal/audit"
 	"github.com/kui/kui/internal/broadcaster"
 	"github.com/kui/kui/internal/config"
-	"github.com/kui/kui/internal/domainxml"
 	"github.com/kui/kui/internal/db"
+	"github.com/kui/kui/internal/domainxml"
 	"github.com/kui/kui/internal/eventsource"
 	"github.com/kui/kui/internal/kvmcheck"
 	"github.com/kui/kui/internal/libvirtconn"
 	mw "github.com/kui/kui/internal/middleware"
+	"github.com/kui/kui/internal/prefix"
 	"github.com/kui/kui/internal/provision"
 	"github.com/kui/kui/internal/template"
 	"github.com/kui/kui/web"
@@ -54,13 +55,15 @@ type SetupConnectFunc func(ctx context.Context, uri, keyfile string) (libvirtcon
 type KVMCheckFunc func() (ok bool, suggestion string, err error)
 
 type RouterOptions struct {
-	Logger            *slog.Logger
-	DB                *db.DB
-	Config            *config.Config
-	ConfigPath        string
-	ConfigPresent     bool
-	DBPath            string
-	GitPath           string
+	Logger        *slog.Logger
+	DB            *db.DB
+	Config        *config.Config
+	ConfigPath    string
+	ConfigPresent bool
+	DBPath        string
+	GitPath       string
+	// PathPrefix is the effective runtime root for resolving KUI_WEB_DIR (bootstrap or YAML runtime.prefix).
+	PathPrefix        string
 	Broadcaster       *broadcaster.Broadcaster
 	ConnectorProvider ConnectorProvider
 	SetupConnectFunc  SetupConnectFunc
@@ -170,25 +173,25 @@ type provisionHostRequest struct {
 }
 
 type listViewOptions struct {
-	ListView           *listView `json:"list_view,omitempty"`
+	ListView            *listView `json:"list_view,omitempty"`
 	OnboardingDismissed *bool     `json:"onboarding_dismissed,omitempty"`
-	Theme              *string   `json:"theme,omitempty"`
+	Theme               *string   `json:"theme,omitempty"`
 }
 
 type listView struct {
-	Sort    string `json:"sort,omitempty"`
+	Sort     string `json:"sort,omitempty"`
 	PageSize int    `json:"page_size,omitempty"`
-	GroupBy string `json:"group_by,omitempty"`
+	GroupBy  string `json:"group_by,omitempty"`
 }
 
 type preferencesResponse struct {
-	DefaultHostID   *string           `json:"default_host_id"`
-	ListViewOptions *listViewOptions  `json:"list_view_options"`
+	DefaultHostID   *string          `json:"default_host_id"`
+	ListViewOptions *listViewOptions `json:"list_view_options"`
 }
 
 type preferencesPutRequest struct {
-	DefaultHostID   *string           `json:"default_host_id"`
-	ListViewOptions *listViewOptions  `json:"list_view_options"`
+	DefaultHostID   *string          `json:"default_host_id"`
+	ListViewOptions *listViewOptions `json:"list_view_options"`
 }
 
 type hostResponse struct {
@@ -210,13 +213,13 @@ type setupCompleteRequest struct {
 }
 
 type setupPersistedConfig struct {
-	Hosts             []config.Host `yaml:"hosts"`
-	DefaultHost       string        `yaml:"default_host"`
-	Session           sessionConfig `yaml:"session"`
-	JWTSecret         string        `yaml:"jwt_secret"`
-	DB                dbPathConfig  `yaml:"db"`
-	Git               gitPathConfig `yaml:"git"`
-	DefaultNameTemplate string      `yaml:"default_name_template"`
+	Hosts               []config.Host `yaml:"hosts"`
+	DefaultHost         string        `yaml:"default_host"`
+	Session             sessionConfig `yaml:"session"`
+	JWTSecret           string        `yaml:"jwt_secret"`
+	DB                  dbPathConfig  `yaml:"db"`
+	Git                 gitPathConfig `yaml:"git"`
+	DefaultNameTemplate string        `yaml:"default_name_template"`
 }
 
 type sessionConfig struct {
@@ -338,15 +341,19 @@ func NewRouter(opts RouterOptions) http.Handler {
 		go mon.Run(context.Background())
 	}
 
-	webFS := resolveWebFS()
+	webFS := resolveWebFS(opts.PathPrefix)
 	router.Get("/", staticHandler(webFS))
 	router.Get("/*", staticHandler(webFS))
 
 	return router
 }
 
-func resolveWebFS() http.FileSystem {
+func resolveWebFS(pathPrefix string) http.FileSystem {
 	if dir := strings.TrimSpace(os.Getenv("KUI_WEB_DIR")); dir != "" {
+		p := strings.TrimSpace(pathPrefix)
+		if p != "" {
+			return http.Dir(prefix.Resolve(p, dir))
+		}
 		return http.Dir(dir)
 	}
 	sub, err := fs.Sub(web.Dist, "dist")
@@ -472,9 +479,9 @@ func (r *routerState) login(sessionTimeout time.Duration, secret string, secureC
 			EntityID:   record.ID,
 			UserID:     &record.ID,
 			Payload: map[string]string{
-				"action": "login",
-				"result": "success",
-				"ip":     clientIP,
+				"action":   "login",
+				"result":   "success",
+				"ip":       clientIP,
 				"username": strings.TrimSpace(payload.Username),
 			},
 		})
@@ -726,9 +733,9 @@ func (r *routerState) getHosts() http.HandlerFunc {
 }
 
 type vmListResponse struct {
-	VMs     []vmListItem `json:"vms"`
+	VMs     []vmListItem      `json:"vms"`
 	Hosts   map[string]string `json:"hosts"`
-	Orphans []vmOrphanItem `json:"orphans"`
+	Orphans []vmOrphanItem    `json:"orphans"`
 }
 
 type vmListItem struct {
@@ -838,7 +845,7 @@ type vmDetailResponse struct {
 	ConsolePreference *string `json:"console_preference"`
 	LastAccess        *string `json:"last_access"`
 	CreatedAt         string  `json:"created_at"`
-	UpdatedAt        string  `json:"updated_at"`
+	UpdatedAt         string  `json:"updated_at"`
 }
 
 func (r *routerState) getVMDetail() http.HandlerFunc {
@@ -1643,8 +1650,8 @@ type orphansBulkClaimConflictItem struct {
 }
 
 type orphansBulkClaimResponse struct {
-	Claimed   []orphansBulkClaimClaimedItem   `json:"claimed"`
-	Conflicts []orphansBulkClaimConflictItem  `json:"conflicts"`
+	Claimed   []orphansBulkClaimClaimedItem  `json:"claimed"`
+	Conflicts []orphansBulkClaimConflictItem `json:"conflicts"`
 }
 
 func (r *routerState) orphansBulkClaim() http.HandlerFunc {
@@ -1775,7 +1782,7 @@ type orphansBulkDestroyFailedItem struct {
 
 type orphansBulkDestroyResponse struct {
 	Destroyed []orphansBulkDestroyDestroyedItem `json:"destroyed"`
-	Failed    []orphansBulkDestroyFailedItem   `json:"failed"`
+	Failed    []orphansBulkDestroyFailedItem    `json:"failed"`
 }
 
 func (r *routerState) orphansBulkDestroy() http.HandlerFunc {
@@ -1891,13 +1898,13 @@ type createVMDisk struct {
 }
 
 type createVMRequest struct {
-	HostID      string        `json:"host_id"`
-	Pool        string        `json:"pool"`
-	Disk        createVMDisk  `json:"disk"`
-	CPU         int           `json:"cpu"`
-	RAMMB       int           `json:"ram_mb"`
-	Network     string        `json:"network"`
-	DisplayName string        `json:"display_name"`
+	HostID      string       `json:"host_id"`
+	Pool        string       `json:"pool"`
+	Disk        createVMDisk `json:"disk"`
+	CPU         int          `json:"cpu"`
+	RAMMB       int          `json:"ram_mb"`
+	Network     string       `json:"network"`
+	DisplayName string       `json:"display_name"`
 }
 
 type createVMResponse struct {
@@ -2168,21 +2175,21 @@ func (r *routerState) getTemplates() http.HandlerFunc {
 }
 
 type templateListItem struct {
-	TemplateID      string             `json:"template_id"`
-	Name            string             `json:"name"`
-	BaseImage       template.BaseImage `json:"base_image"`
-	CPU             int                `json:"cpu"`
-	RAMMB           int                `json:"ram_mb"`
-	Network         string             `json:"network"`
-	CreatedAt       string             `json:"created_at"`
-	BaseImageValid  bool               `json:"base_image_valid"`
+	TemplateID     string             `json:"template_id"`
+	Name           string             `json:"name"`
+	BaseImage      template.BaseImage `json:"base_image"`
+	CPU            int                `json:"cpu"`
+	RAMMB          int                `json:"ram_mb"`
+	Network        string             `json:"network"`
+	CreatedAt      string             `json:"created_at"`
+	BaseImageValid bool               `json:"base_image_valid"`
 }
 
 type createTemplateRequest struct {
-	SourceHostID    string `json:"source_host_id"`
+	SourceHostID      string `json:"source_host_id"`
 	SourceLibvirtUUID string `json:"source_libvirt_uuid"`
-	Name            string `json:"name"`
-	TargetPool      string `json:"target_pool"`
+	Name              string `json:"name"`
+	TargetPool        string `json:"target_pool"`
 }
 
 type createVMFromTemplateRequest struct {
@@ -2417,9 +2424,9 @@ func (r *routerState) createTemplate() http.HandlerFunc {
 			EntityID:   templateID,
 			UserID:     &userID,
 			Payload: map[string]interface{}{
-				"source_host_id": sourceHostID,
+				"source_host_id":      sourceHostID,
 				"source_libvirt_uuid": sourceUUID,
-				"name": name,
+				"name":                name,
 			},
 		}
 		if err := audit.RecordEventWithDiff(req.Context(), r.db, gitBase, ev, diffPath, diffContent); err != nil {
@@ -2738,10 +2745,10 @@ func (r *routerState) createVMFromTemplate() http.HandlerFunc {
 			EntityID:   domainInfo.UUID,
 			UserID:     &user.ID,
 			Payload: map[string]string{
-				"action":     "create",
-				"from_state": "",
-				"to_state":   string(domainInfo.State),
-				"host_id":    hostID,
+				"action":      "create",
+				"from_state":  "",
+				"to_state":    string(domainInfo.State),
+				"host_id":     hostID,
 				"template_id": templateID,
 			},
 		})
@@ -2791,8 +2798,8 @@ func extractFirstDiskPath(domainXML string) string {
 
 type vmCloneRequest struct {
 	TargetHostID string `json:"target_host_id"`
-	TargetPool  string `json:"target_pool"`
-	TargetName  string `json:"target_name"`
+	TargetPool   string `json:"target_pool"`
+	TargetName   string `json:"target_name"`
 }
 
 func (r *routerState) vmClone() http.HandlerFunc {
@@ -3735,12 +3742,12 @@ func (r *routerState) setupComplete() http.HandlerFunc {
 			EntityID:   "latest",
 			UserID:     &userID,
 			Payload: map[string]interface{}{
-				"action":          "wizard_complete",
-				"result":          "success",
+				"action":         "wizard_complete",
+				"result":         "success",
 				"admin_username": strings.TrimSpace(payload.Admin.Username),
-				"host_id":         payload.DefaultHost,
-				"config_path":     r.configPath,
-				"git_path":        r.configuredGitPath(),
+				"host_id":        payload.DefaultHost,
+				"config_path":    r.configPath,
+				"git_path":       r.configuredGitPath(),
 			},
 		}
 		if err := audit.RecordEventWithDiff(req.Context(), r.db, r.configuredGitPath(), ev, diffPath, diffContent); err != nil {
@@ -3938,10 +3945,10 @@ func clientIPFromRequest(r *http.Request) string {
 }
 
 type loginRateLimiter struct {
-	mu        sync.Mutex
-	failures  map[string][]time.Time
-	limit     int
-	window    time.Duration
+	mu       sync.Mutex
+	failures map[string][]time.Time
+	limit    int
+	window   time.Duration
 }
 
 func newLoginRateLimiter(limit int, window time.Duration) *loginRateLimiter {
@@ -3995,4 +4002,3 @@ func signJWT(user userRecord, now time.Time, expiresAt time.Time, secret string)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
 }
-

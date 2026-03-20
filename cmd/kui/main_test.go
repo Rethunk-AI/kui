@@ -602,3 +602,233 @@ func TestStartServer_TLS(t *testing.T) {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
 }
+
+func TestParseFlags_PrefixFromEnvWhenFlagUnset(t *testing.T) {
+	t.Cleanup(func() { os.Unsetenv("KUI_PREFIX") })
+	if err := os.Setenv("KUI_PREFIX", "/from/env"); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+	opts, err := parseFlags([]string{"--listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+	if opts.bootstrapPrefix != "/from/env" {
+		t.Fatalf("bootstrapPrefix = %q, want /from/env", opts.bootstrapPrefix)
+	}
+}
+
+func TestParseFlags_PrefixFlagOverridesEnv(t *testing.T) {
+	t.Cleanup(func() { os.Unsetenv("KUI_PREFIX") })
+	if err := os.Setenv("KUI_PREFIX", "/from/env"); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+	opts, err := parseFlags([]string{"--prefix", "/from/flag", "--listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+	if opts.bootstrapPrefix != "/from/flag" {
+		t.Fatalf("bootstrapPrefix = %q, want /from/flag", opts.bootstrapPrefix)
+	}
+}
+
+func TestBuildApplication_InvalidPrefixNotDirectory(t *testing.T) {
+	t.Parallel()
+	tempDir := t.TempDir()
+	notDir := filepath.Join(tempDir, "file")
+	if err := os.WriteFile(notDir, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	opts, err := parseFlags([]string{"--prefix", notDir, "--config", filepath.Join(tempDir, "n.yaml"), "--listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+	_, err = buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err == nil {
+		t.Fatal("expected error for prefix that is not a directory")
+	}
+	if !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("expected not-a-directory error, got %v", err)
+	}
+}
+
+func TestBuildApplication_BootstrapPrefixResolvesSetupDBPath(t *testing.T) {
+	t.Cleanup(func() { os.Unsetenv("KUI_DB_PATH") })
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "var", "lib", "kui"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.Setenv("KUI_DB_PATH", "/var/lib/kui/chroot.db"); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+	opts, err := parseFlags([]string{
+		"--prefix", root,
+		"--config", filepath.Join(root, "no-such-config.yaml"),
+		"--listen", "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+	app, err := buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("buildApplication: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = app.shutdown(ctx)
+	}()
+	wantDB := filepath.Join(root, "var", "lib", "kui", "chroot.db")
+	if app.dbPath != wantDB {
+		t.Fatalf("dbPath = %q, want %q", app.dbPath, wantDB)
+	}
+	if _, err := os.Stat(wantDB); err != nil {
+		t.Fatalf("expected db file at resolved path: %v", err)
+	}
+}
+
+func TestBuildApplication_BootstrapPrefixResolvesLogicalConfigPath(t *testing.T) {
+	root := t.TempDir()
+	resolvedCfg := filepath.Join(root, "etc", "kui", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(resolvedCfg), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	dbResolved := filepath.Join(root, "var", "lib", "kui", "pfx.db")
+	gitResolved := filepath.Join(root, "var", "lib", "kui", "git")
+	if err := os.MkdirAll(filepath.Dir(dbResolved), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.MkdirAll(gitResolved, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configContent := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "0123456789abcdef0123456789abcdef"
+db:
+  path: /var/lib/kui/pfx.db
+git:
+  path: /var/lib/kui/git
+`)
+	if err := os.WriteFile(resolvedCfg, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	opts, err := parseFlags([]string{"--prefix", root, "--config", "/etc/kui/config.yaml", "--listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+	app, err := buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("buildApplication: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = app.shutdown(ctx)
+	}()
+	if app.configPath != resolvedCfg {
+		t.Fatalf("configPath = %q, want resolved %q", app.configPath, resolvedCfg)
+	}
+	if app.config == nil {
+		t.Fatal("expected config loaded")
+	}
+	if app.config.DB.Path != dbResolved {
+		t.Fatalf("config db path = %q, want %q", app.config.DB.Path, dbResolved)
+	}
+}
+
+func TestEmbeddedWeb_KUI_WEB_DIRUnset(t *testing.T) {
+	t.Parallel()
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_WEB_DIR") })
+	_ = os.Unsetenv("KUI_WEB_DIR")
+
+	tempDir := t.TempDir()
+	dbPath := filepath.Join(tempDir, "emb.db")
+	configPath := filepath.Join(tempDir, "config.yaml")
+	configContent := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "0123456789abcdef0123456789abcdef"
+db:
+  path: ` + dbPath + `
+git:
+  path: ` + tempDir + `
+`)
+	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	opts, err := parseFlags([]string{"--config", configPath, "--listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+	app, err := buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("build application: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = app.shutdown(ctx)
+	}()
+	listener, err := app.startServer(opts.listen, "", "")
+	if err != nil {
+		t.Fatalf("start server: %v", err)
+	}
+	resp, err := http.Get(fmt.Sprintf("http://%s/", listener.Addr().String()))
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestBuildApplication_KUI_WEB_DIRResolvedUnderPrefix(t *testing.T) {
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_WEB_DIR"); _ = os.Unsetenv("KUI_DB_PATH") })
+	root := t.TempDir()
+	webResolved := filepath.Join(root, "opt", "kui", "static")
+	if err := os.MkdirAll(webResolved, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(webResolved, "index.html"), []byte("<!doctype html><html></html>"), 0o644); err != nil {
+		t.Fatalf("write index: %v", err)
+	}
+	if err := os.Setenv("KUI_WEB_DIR", "/opt/kui/static"); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "var", "lib", "kui"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.Setenv("KUI_DB_PATH", "/var/lib/kui/webtest.db"); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+	opts, err := parseFlags([]string{
+		"--prefix", root,
+		"--config", filepath.Join(root, "missing.yaml"),
+		"--listen", "127.0.0.1:0",
+	})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+	app, err := buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("buildApplication: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = app.shutdown(ctx)
+	}()
+	listener, err := app.startServer(opts.listen, "", "")
+	if err != nil {
+		t.Fatalf("startServer: %v", err)
+	}
+	resp, err := http.Get(fmt.Sprintf("http://%s/", listener.Addr().String()))
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+}

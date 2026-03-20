@@ -94,15 +94,7 @@ func run(args []string, logger *slog.Logger) error {
 		_ = app.shutdown(ctx)
 	}()
 
-	tlsCert, tlsKey := opts.tlsCert, opts.tlsKey
-	if b := strings.TrimSpace(opts.bootstrapPrefix); b != "" {
-		if tlsCert != "" {
-			tlsCert = prefix.Resolve(b, tlsCert)
-		}
-		if tlsKey != "" {
-			tlsKey = prefix.Resolve(b, tlsKey)
-		}
-	}
+	tlsCert, tlsKey := resolveTLSCertKey(opts.bootstrapPrefix, opts.tlsCert, opts.tlsKey)
 	listener, err := app.startServer(opts.listen, tlsCert, tlsKey)
 	if err != nil {
 		return err
@@ -315,6 +307,23 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 func getFileStatError(path string) error {
 	_, err := os.Stat(path)
 	return err
+}
+
+// resolveTLSCertKey applies prefix.Resolve to PEM paths when bootstrap prefix is non-empty
+// after trim (same rule as static files and config bootstrap).
+func resolveTLSCertKey(bootstrap, cert, key string) (string, string) {
+	b := strings.TrimSpace(bootstrap)
+	if b == "" {
+		return cert, key
+	}
+	outCert, outKey := cert, key
+	if strings.TrimSpace(cert) != "" {
+		outCert = prefix.Resolve(b, cert)
+	}
+	if strings.TrimSpace(key) != "" {
+		outKey = prefix.Resolve(b, key)
+	}
+	return outCert, outKey
 }
 
 func (app *application) startServer(listen, tlsCert, tlsKey string) (net.Listener, error) {

@@ -603,6 +603,80 @@ func TestStartServer_TLS(t *testing.T) {
 	}
 }
 
+func TestStartServer_TLSUnderPrefix(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	certPath := filepath.Join(root, "etc", "ssl", "cert.pem")
+	keyPath := filepath.Join(root, "etc", "ssl", "key.pem")
+	if err := os.MkdirAll(filepath.Dir(certPath), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	template := x509.Certificate{SerialNumber: big.NewInt(1)}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create cert: %v", err)
+	}
+	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	keyBytes, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshal key: %v", err)
+	}
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes}), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	opts, err := parseFlags([]string{
+		"--prefix", root,
+		"--config", filepath.Join(root, "nonexistent.yaml"),
+		"--listen", "127.0.0.1:0",
+		"--tls-cert", "/etc/ssl/cert.pem",
+		"--tls-key", "/etc/ssl/key.pem",
+	})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+	os.Setenv("KUI_DB_PATH", filepath.Join(root, "var", "lib", "kui", "tls.db"))
+	t.Cleanup(func() { os.Unsetenv("KUI_DB_PATH") })
+	if err := os.MkdirAll(filepath.Dir(os.Getenv("KUI_DB_PATH")), 0o755); err != nil {
+		t.Fatalf("mkdir db parent: %v", err)
+	}
+
+	app, err := buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("buildApplication: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = app.shutdown(ctx)
+	}()
+
+	tlsCert, tlsKey := resolveTLSCertKey(opts.bootstrapPrefix, opts.tlsCert, opts.tlsKey)
+	if tlsCert != certPath || tlsKey != keyPath {
+		t.Fatalf("resolved tls paths cert=%q key=%q, want %q %q", tlsCert, tlsKey, certPath, keyPath)
+	}
+
+	listener, err := app.startServer(opts.listen, tlsCert, tlsKey)
+	if err != nil {
+		t.Fatalf("startServer: %v", err)
+	}
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	resp, err := client.Get(fmt.Sprintf("https://%s/", listener.Addr().String()))
+	if err != nil {
+		t.Fatalf("GET https: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
 func TestParseFlags_PrefixFromEnvWhenFlagUnset(t *testing.T) {
 	t.Cleanup(func() { os.Unsetenv("KUI_PREFIX") })
 	if err := os.Setenv("KUI_PREFIX", "/from/env"); err != nil {
@@ -628,6 +702,34 @@ func TestParseFlags_PrefixFlagOverridesEnv(t *testing.T) {
 	}
 	if opts.bootstrapPrefix != "/from/flag" {
 		t.Fatalf("bootstrapPrefix = %q, want /from/flag", opts.bootstrapPrefix)
+	}
+}
+
+func TestResolveTLSCertKey_NoPrefix(t *testing.T) {
+	t.Parallel()
+	c, k := resolveTLSCertKey("", "/etc/ssl/a.pem", "/etc/ssl/b.pem")
+	if c != "/etc/ssl/a.pem" || k != "/etc/ssl/b.pem" {
+		t.Fatalf("got cert=%q key=%q", c, k)
+	}
+}
+
+func TestResolveTLSCertKey_UnderPrefix(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	c, k := resolveTLSCertKey(root, "/etc/ssl/a.pem", "/etc/ssl/b.pem")
+	wantC := filepath.Join(root, "etc", "ssl", "a.pem")
+	wantK := filepath.Join(root, "etc", "ssl", "b.pem")
+	if c != wantC || k != wantK {
+		t.Fatalf("got cert=%q key=%q, want %q %q", c, k, wantC, wantK)
+	}
+}
+
+func TestResolveTLSCertKey_UnderPrefixEmptyCertUnchanged(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	c, k := resolveTLSCertKey(root, "", "")
+	if c != "" || k != "" {
+		t.Fatalf("got cert=%q key=%q, want empty", c, k)
 	}
 }
 
@@ -715,6 +817,69 @@ git:
 	opts, err := parseFlags([]string{"--prefix", root, "--config", "/etc/kui/config.yaml", "--listen", "127.0.0.1:0"})
 	if err != nil {
 		t.Fatalf("parseFlags: %v", err)
+	}
+	app, err := buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("buildApplication: %v", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = app.shutdown(ctx)
+	}()
+	if app.configPath != resolvedCfg {
+		t.Fatalf("configPath = %q, want resolved %q", app.configPath, resolvedCfg)
+	}
+	if app.config == nil {
+		t.Fatal("expected config loaded")
+	}
+	if app.config.DB.Path != dbResolved {
+		t.Fatalf("config db path = %q, want %q", app.config.DB.Path, dbResolved)
+	}
+}
+
+func TestBuildApplication_KUI_PREFIXEnvResolvesLogicalConfigPath(t *testing.T) {
+	t.Cleanup(func() {
+		_ = os.Unsetenv("KUI_PREFIX")
+		_ = os.Unsetenv("KUI_CONFIG")
+	})
+	root := t.TempDir()
+	resolvedCfg := filepath.Join(root, "etc", "kui", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(resolvedCfg), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	dbResolved := filepath.Join(root, "var", "lib", "kui", "envpfx.db")
+	gitResolved := filepath.Join(root, "var", "lib", "kui", "git")
+	if err := os.MkdirAll(filepath.Dir(dbResolved), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.MkdirAll(gitResolved, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configContent := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "0123456789abcdef0123456789abcdef"
+db:
+  path: /var/lib/kui/envpfx.db
+git:
+  path: /var/lib/kui/git
+`)
+	if err := os.WriteFile(resolvedCfg, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if err := os.Setenv("KUI_PREFIX", root); err != nil {
+		t.Fatalf("setenv KUI_PREFIX: %v", err)
+	}
+	if err := os.Setenv("KUI_CONFIG", "/etc/kui/config.yaml"); err != nil {
+		t.Fatalf("setenv KUI_CONFIG: %v", err)
+	}
+	opts, err := parseFlags([]string{"--listen", "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("parseFlags: %v", err)
+	}
+	if opts.configSource != "env" {
+		t.Fatalf("configSource = %q, want env", opts.configSource)
 	}
 	app, err := buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {

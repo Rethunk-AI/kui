@@ -2,7 +2,7 @@
 
 ## Overview
 
-Create `spec.md` that formally specifies VM create (pool+path, clone), lifecycle operations, pool/path validation, and orphan claim flow for KUI MVP. The spec consolidates decision-log entries (§§0–4), architecture, and libvirt research into an implementable requirements document. Target: <800 lines or <10 tasks; greenfield only; MVP scope: pool+path + clone only; template-based create in v2.
+Create `spec.md` that formally specifies VM create (pool+path, clone), lifecycle operations, pool/path validation, and orphan claim flow for KUI MVP. The spec consolidates decision-log entries (§§0–4), architecture, and libvirt research into an implementable requirements document. Target: <800 lines or <10 tasks; greenfield only; MVP scope: pool+path + clone; **create-from-template** is specified under `specs/done/spec-template-management/spec.md` as `POST /api/templates/{template_id}/create` (not duplicated normatively here).
 
 **References to cite:**
 - `docs/prd/decision-log.md` §§0–4
@@ -17,7 +17,7 @@ The spec.md shall have the following sections. Each maps to decision-log topics 
 
 ### 1. Scope & Constraints
 
-- **Content:** Spec scope summary (pool+path create, clone, lifecycle, pool/path validation, orphan claim). Constraints: greenfield, <800 lines, MVP = pool+path + clone only; template-based create in v2. Libvirt Connector owns connection and domain/storage queries; API layer owns provisioning logic.
+- **Content:** Spec scope summary (pool+path create, clone, lifecycle, pool/path validation, orphan claim). Constraints: greenfield, <800 lines, MVP = pool+path + clone; template-based create is cross-spec (`spec-template-management`, `POST /api/templates/{template_id}/create`). Libvirt Connector owns connection and domain/storage queries; API layer owns provisioning logic.
 - **Sources:** User-provided scope; decision-log §2 (Docs scope, MVP scope, VM create flow, KVM interaction); architecture §2 component boundaries.
 
 ### 2. Pool+Path Create Flow
@@ -101,7 +101,7 @@ The spec.md shall have the following sections. Each maps to decision-log topics 
 
 ### 10. Out of Scope
 
-- Template-based create flow (v2).
+- Normative template-based create flow (documented in `specs/done/spec-template-management/spec.md`; implemented route `POST /api/templates/{template_id}/create`).
 - Storage/network management (use existing only).
 - Migration, backfill, backwards compatibility.
 - Docker deployment (post-MVP).

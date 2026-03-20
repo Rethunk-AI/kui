@@ -13,7 +13,7 @@
 | Topic | Source | Key content |
 |-------|--------|-------------|
 | VM templates storage | §2 Canonical | Stored in Git (full audit chain); sharable when RBAC added |
-| Template creation | §2, §4 | MVP: creation exists (de-emphasized); create VM from template in v2 |
+| Template creation | §2, §4 | MVP: save-as-template + list; create VM from template implemented as `POST /api/templates/{template_id}/create` (see spec §5.4) |
 | Template from VM | §4 Inquisition | Domain XML + copy of source disk. Copy destination: config template_storage first; else same pool as source |
 | Template sources | §2, §4 | Pre-existing pools/paths; template_storage optional; user picks pool at save time if missing; else same pool as source |
 | Template structure | §2, §4 | Name + base image required; CPU/RAM/network have defaults |
@@ -164,6 +164,7 @@ From `specs/done/schema-storage/spec.md` §2.4:
 |--------|------|---------|
 | POST | /api/templates | Save VM as template |
 | GET | /api/templates | List templates |
+| POST | /api/templates/{template_id}/create | Create VM from template |
 
 ### 5.2 POST /templates (save VM as template)
 
@@ -186,7 +187,7 @@ From `specs/done/schema-storage/spec.md` §2.4:
 - `GET /api/templates/{id}` — optional; list may be sufficient.
 - `DELETE /api/templates/{id}` — optional for MVP.
 - `PUT /api/templates/{id}` — edit template; optional.
-- Create VM from template — v2.
+- Create VM from template is **in scope** for the shipped spec: `POST /api/templates/{template_id}/create` (see finalized `spec.md` §5.4). Remaining gaps: per-template CRUD, batch/versioning (not single-instance create).
 
 ---
 
@@ -196,12 +197,12 @@ The `spec.md` file should include:
 
 1. **What & Why** — Problem: template management undefined; Users: operators, developers; Value: canonical reference for save-as-template and list flows.
 2. **Requirements**
-   - Must: save-VM-as-template flow (disk copy, domain XML, Git commit, audit); list templates from Git; template structure (meta.yaml, domain.xml); base image validation; API surface (POST/GET /templates).
+   - Must: save-VM-as-template flow (disk copy, domain XML, Git commit, audit); list templates from Git; template structure (meta.yaml, domain.xml); base image validation; API surface (POST/GET `/api/templates`, POST `/api/templates/{template_id}/create`).
    - Should: Error handling for malformed templates; base_image format specification.
 3. **User Stories** — Operator saves VM as template; operator lists templates; developer implements against spec.
 4. **Success Metrics** — Save produces valid template in Git with audit; list returns templates; base image validation works.
 5. **Dependencies** — decision-log §§0–4, architecture.md, schema-storage spec.
-6. **Out of Scope** — Create VM from template (v2); migration; stub implementations.
+6. **Out of Scope** — Per-template GET/DELETE/PUT, batch/template versioning beyond `POST .../create`; migration; stub implementations.
 
 **Format:** Follow schema-storage spec style; include flow diagrams, meta.yaml schema, API request/response shapes.
 

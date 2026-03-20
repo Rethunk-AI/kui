@@ -183,6 +183,7 @@ network: <string>          # optional, default from config vm_defaults.network
 |--------|------|---------|
 | POST | /api/templates | Save VM as template |
 | GET | /api/templates | List templates |
+| POST | /api/templates/{template_id}/create | Create VM from template |
 
 ### 5.2 POST /api/templates
 **Request body**
@@ -231,11 +232,52 @@ network: <string>          # optional, default from config vm_defaults.network
 ]
 ```
 
-### 5.4 MVP out of scope
+### 5.4 POST /api/templates/{template_id}/create
+
+Authentication is required (same session/auth model as other mutating `/api` routes).
+
+**Request body**
+
+- `host_id` (string, optional if config `default_host` is set; otherwise required): target hypervisor for the new VM.
+- `target_pool` (string, optional): destination storage pool for the cloned disk; if omitted, resolves from config (`template_storage`, then `default_pool`, then template `meta.yaml` `base_image.pool`).
+- `display_name` (string, optional): KUI display name; if omitted, uses the generated libvirt domain name.
+
+**Success response (201)**
+
+Same JSON fields as successful `POST /api/vms` (pool+path) create:
+
+```json
+{
+  "host_id": "local",
+  "libvirt_uuid": "...",
+  "display_name": "my-vm",
+  "created_at": "2026-03-16T12:34:56Z",
+  "status": "shutoff"
+}
+```
+
+**Failure response behavior**
+
+- 401: unauthenticated.
+- 400: invalid JSON; missing `template_id` in path; missing `host_id` when no default; missing resolvable `target_pool`; invalid template `base_image`; target or source pool invalid/inactive; network from template/domain XML not present on host; template base path not found on host when `meta.yaml` uses `path`.
+- 404: template directory or required files missing in Git; target `host_id` unknown to KUI.
+- 503: setup incomplete (`config` not loaded) or Git base path not configured.
+- 500: internal failures (disk clone/copy, domain define, `vm_metadata` insert, etc.).
+
+**Behavior summary**
+
+1. Load `meta.yaml` and `domain.xml` for `{template_id}` from `<git_base>/templates/{template_id}/`.
+2. Resolve target pool and validate it (and the template’s source pool) via libvirt.
+3. Clone or copy the template base disk into the target pool under a new volume name, then point the domain disk at the new path.
+4. Apply new domain UUID and name, CPU/RAM from template meta (with `vm_defaults` fallback), network validation against the target host, and `DefineXML` on the target host.
+5. Insert `vm_metadata` with `claimed = true` and the resolved `display_name`.
+6. Record `audit_events` with `event_type` `vm_lifecycle`, `entity_type` `vm`, `entity_id` the new libvirt UUID, and payload including `action` `create`, `host_id`, domain state fields, and `template_id`.
+
+### 5.5 MVP out of scope
 - `GET /templates/{template_id}`
 - `DELETE /templates/{template_id}`
 - `PUT /templates/{template_id}`
-- VM creation-from-template endpoint
+- Batch create, template versioning, or other orchestration beyond this single-instance endpoint
 
 ## 6. Requirements
 
@@ -244,7 +286,7 @@ network: <string>          # optional, default from config vm_defaults.network
 2. Implement list flow that reads from Git directories under `<git_base>/templates`.
 3. Enforce `meta.yaml` required fields (`name`, `base_image`) and apply defaults for `cpu`, `ram_mb`, `network`.
 4. Validate base image pool/path/volume using libvirt primitives.
-5. Expose POST/GET `/api/templates` with request/response contracts in §5.
+5. Expose POST/GET `/api/templates` and POST `/api/templates/{template_id}/create` with request/response contracts in §5.
 
 ### 6.2 Should
 1. Add explicit `base_image_valid` behavior and document when validation is lazy vs eager.
@@ -272,7 +314,8 @@ network: <string>          # optional, default from config vm_defaults.network
 - `specs/done/schema-storage/spec.md`
 
 ## 10. Out of Scope
-- VM creation from template (v2).
+- Per-template GET/DELETE/PUT and template edit APIs (see §5.5).
+- Batch VM creation from templates, template revision/version workflows, and scheduling beyond single-request create.
 - RBAC-aware template sharing rules (requires role model extension).
 - Migration, compatibility modes, or backfill paths (greenfield only).
 - Storage/network management and template sharing workflows outside template creation/listing.

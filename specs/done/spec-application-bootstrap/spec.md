@@ -185,7 +185,7 @@ Implementation notes:
   - VM lifecycle (list, create, clone, start, stop, pause, resume, destroy, claim, config edit): `specs/done/spec-vm-lifecycle-create/spec.md`
   - Console (VNC, serial WebSocket): `specs/done/spec-console-realtime/spec.md`
   - Real-time (SSE status stream): `specs/done/spec-console-realtime/spec.md`
-  - Templates (list, save VM as template): `specs/done/spec-template-management/spec.md`
+  - Templates (list, save VM as template, create VM from template): `specs/done/spec-template-management/spec.md`
   - Preferences, hosts: `specs/done/api-auth/spec.md`
 
 ## §6 Startup Sequence

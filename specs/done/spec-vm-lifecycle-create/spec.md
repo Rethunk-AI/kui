@@ -12,7 +12,7 @@ This specification defines the MVP VM lifecycle and provisioning contract for KU
   - Pool/path validation via libvirt.
   - Orphan domain discovery and claim flow.
   - Informal API surface for these features.
-- Out-of-scope for this spec is migration, compatibility modes, backward-compatibility defaults, and template-based creation.
+- Out-of-scope for this spec is migration, compatibility modes, backward-compatibility defaults, and the **normative** template-based create contract (orchestration, request/response, Git template inputs): that is specified in `specs/done/spec-template-management/spec.md` (`POST /api/templates/{template_id}/create`).
 - Source constraints:
   - `docs/prd/decision-log.md` §§2,4 (VM create flow, clone scope, lifecycle, orphans, API style, greenfield).
   - `docs/prd/architecture.md` (§§1–3 for API/connector/data flow boundaries).
@@ -398,7 +398,7 @@ Same shape as detail endpoint (refreshed VM state + metadata).
 
 ## 11. Out of Scope
 
-- Template-based create flow (`Create VM from template`) is deferred.
+- Normative detail for **create VM from template** is not duplicated here; see `specs/done/spec-template-management/spec.md` §5.4. The implemented orchestration path is **`POST /api/templates/{template_id}/create`** (load template from Git, clone/copy base disk, define domain, `vm_metadata`, `audit_events` `vm_lifecycle` with `template_id` in payload).
 - Docker deployment details.
 - Storage/network provisioning/management (existing storage/networks only).
 - Clone progress/events (`%, ETA, stage`) in v1.

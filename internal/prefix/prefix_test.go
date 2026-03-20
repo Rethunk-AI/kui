@@ -132,3 +132,23 @@ func TestResolve_prefixTrimmed(t *testing.T) {
 		t.Fatalf("got %q want %q", got, want)
 	}
 }
+
+func TestResolve_nonEmptyPrefixEmptyPathInput(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	got := Resolve(root, "")
+	want := filepath.Clean(root)
+	if got != want {
+		t.Fatalf("Resolve(%q, \"\") = %q; want %q", root, got, want)
+	}
+}
+
+func TestResolve_cleanDotAndRepeatedSeparators(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	got := Resolve(root, "./foo//bar/../baz")
+	want := filepath.Join(root, "foo", "baz")
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}

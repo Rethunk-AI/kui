@@ -19,12 +19,14 @@ import (
 	"strings"
 )
 
-// Resolve returns p unchanged when prefix is empty (after strings.TrimSpace);
-// otherwise it returns filepath.Join(trimmedPrefix, remainder), where remainder
-// is filepath.Clean(p) with its volume name (if any) and all leading path
-// separators removed. Relative inputs therefore become prefix-relative; Unix
-// absolute paths lose the leading slash; Windows absolute paths lose the drive
-// or UNC root so the path is rooted under prefix.
+// Resolve returns p unchanged when prefix is empty after strings.TrimSpace
+// (including when prefix is only whitespace). Callers keep the same
+// CWD-relative vs absolute behavior as for raw p.
+//
+// When prefix is non-empty, remainder is filepath.Clean(p) with the volume
+// prefix removed (if any, for Windows drive/UNC roots) and all leading path
+// separators stripped, then filepath.Join(prefix, remainder). Relative and
+// absolute inputs are both rooted under prefix.
 func Resolve(prefix, p string) string {
 	prefix = strings.TrimSpace(prefix)
 	if prefix == "" {

@@ -35,13 +35,13 @@ func SelectPoolPath(pathPrefix string) (PoolPathResult, error) {
 			return PoolPathResult{Path: override, Created: false}, nil
 		}
 		trimmed := strings.TrimSpace(override)
-		return PoolPathResult{Path: prefix.Resolve(pathPrefix, trimmed), Created: false}, nil
+		return PoolPathResult{Path: prefix.Resolve(pref, trimmed), Created: false}, nil
 	}
 	libvirtPath := DefaultPoolPath
 	kuiPath := DefaultKuiPoolPath
 	if pref != "" {
-		libvirtPath = prefix.Resolve(pathPrefix, DefaultPoolPath)
-		kuiPath = prefix.Resolve(pathPrefix, DefaultKuiPoolPath)
+		libvirtPath = prefix.Resolve(pref, DefaultPoolPath)
+		kuiPath = prefix.Resolve(pref, DefaultKuiPoolPath)
 	}
 	entries, err := os.ReadDir(libvirtPath)
 	if err == nil && len(entries) > 0 {

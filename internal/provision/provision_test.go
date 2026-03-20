@@ -3,10 +3,25 @@ package provision
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kui/kui/internal/prefix"
 )
+
+// requireUnderRoot fails if p is not rooted under root (after Clean).
+func requireUnderRoot(t *testing.T, root, p string) {
+	t.Helper()
+	root = filepath.Clean(root)
+	p = filepath.Clean(p)
+	rel, err := filepath.Rel(root, p)
+	if err != nil {
+		t.Fatalf("Rel(%q, %q): %v", root, p, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		t.Fatalf("path %q is not under prefix root %q (rel=%q)", p, root, rel)
+	}
+}
 
 func TestSelectPoolPath_emptyPrefix_envOverrideRaw(t *testing.T) {
 	raw := "  /tmp/kui-test-pool  "
@@ -42,6 +57,7 @@ func TestSelectPoolPath_nonEmptyPrefix_envAbsResolved(t *testing.T) {
 	if got.Path != want {
 		t.Fatalf("Path: got %q want %q", got.Path, want)
 	}
+	requireUnderRoot(t, root, got.Path)
 }
 
 func TestSelectPoolPath_nonEmptyPrefix_defaults_libvirtWhenNonEmpty(t *testing.T) {
@@ -62,6 +78,7 @@ func TestSelectPoolPath_nonEmptyPrefix_defaults_libvirtWhenNonEmpty(t *testing.T
 	if got.Path != libvirt {
 		t.Fatalf("Path: got %q want %q", got.Path, libvirt)
 	}
+	requireUnderRoot(t, root, got.Path)
 }
 
 func TestSelectPoolPath_nonEmptyPrefix_defaults_kuiWhenLibvirtEmpty(t *testing.T) {
@@ -79,6 +96,7 @@ func TestSelectPoolPath_nonEmptyPrefix_defaults_kuiWhenLibvirtEmpty(t *testing.T
 	if got.Path != kui {
 		t.Fatalf("Path: got %q want %q", got.Path, kui)
 	}
+	requireUnderRoot(t, root, got.Path)
 }
 
 func TestSelectPoolPath_nonEmptyPrefix_defaults_kuiWhenLibvirtMissing(t *testing.T) {
@@ -92,6 +110,7 @@ func TestSelectPoolPath_nonEmptyPrefix_defaults_kuiWhenLibvirtMissing(t *testing
 	if got.Path != kui {
 		t.Fatalf("Path: got %q want %q", got.Path, kui)
 	}
+	requireUnderRoot(t, root, got.Path)
 }
 
 func TestSelectPoolPath_whitespaceOnlyPrefix_likeLegacy(t *testing.T) {

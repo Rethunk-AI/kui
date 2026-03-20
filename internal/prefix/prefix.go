@@ -1,13 +1,17 @@
-// Package prefix provides chroot-style lexical resolution of filesystem path strings
-// against an optional runtime root (install prefix).
+// Package prefix provides chroot-style path resolution for a runtime install root.
 //
-// Resolve is not a real chroot(2): it only rewrites path strings. Symlinks inside
-// the prefix tree can still point outside it; optional containment checks (e.g.
-// EvalSymlinks on the prefix plus lexical HasPrefix after Clean) are left to callers.
+// Resolve maps logical paths (including absolute-looking strings such as
+// "/var/lib/kui/db.sqlite") under a single directory prefix. This is analogous
+// to changing the filesystem root (chroot) for application opens only—the
+// process is not placed in a real chroot(2) jail.
 //
-// Lexical ".." segments in the input are handled by filepath.Clean before joining;
-// the joined result may still escape the prefix (e.g. Join(prefix, "..")) unless
-// callers add optional validation—that is out of scope for Resolve itself.
+// Semantics use path/filepath so separators and volume roots follow the host OS
+// (Unix: single root; Windows: drive letters and UNC \\server\share prefixes).
+//
+// Optional containment hardening (e.g. rejecting ".." that lexically escapes the
+// prefix, or comparing against EvalSymlinks(prefix)) is not performed here;
+// callers may add startup checks. Symlinks inside the prefix tree can still
+// point outside it unless separately validated.
 package prefix
 
 import (
@@ -15,24 +19,20 @@ import (
 	"strings"
 )
 
-// Resolve returns the effective path for p under runtime prefix.
-//
-// Prefix is considered empty if strings.TrimSpace(prefix) yields ""; in that case p
-// is returned unchanged (legacy: relative stays as passed; absolute stays absolute).
-//
-// When prefix is non-empty: cleaned := filepath.Clean(p); leading path separators are
-// removed from cleaned after the volume name (filepath.VolumeName), so absolute and
-// relative inputs both map under prefix via filepath.Join(prefix, remainder). On
-// Windows, volume roots (e.g. C:, UNC \\host\share) are stripped per filepath rules
-// before removing leading separators.
-func Resolve(prefix string, p string) string {
-	pref := strings.TrimSpace(prefix)
-	if pref == "" {
+// Resolve returns p unchanged when prefix is empty (after strings.TrimSpace);
+// otherwise it returns filepath.Join(trimmedPrefix, remainder), where remainder
+// is filepath.Clean(p) with its volume name (if any) and all leading path
+// separators removed. Relative inputs therefore become prefix-relative; Unix
+// absolute paths lose the leading slash; Windows absolute paths lose the drive
+// or UNC root so the path is rooted under prefix.
+func Resolve(prefix, p string) string {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
 		return p
 	}
 	cleaned := filepath.Clean(p)
 	vol := filepath.VolumeName(cleaned)
 	rest := cleaned[len(vol):]
 	rest = strings.TrimLeft(rest, `/\`)
-	return filepath.Join(pref, rest)
+	return filepath.Join(prefix, rest)
 }

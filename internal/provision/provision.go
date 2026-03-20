@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/kui/kui/internal/prefix"
 	"libvirt.org/go/libvirtxml"
 )
 
@@ -25,15 +26,28 @@ type PoolPathResult struct {
 // SelectPoolPath chooses the pool path per plan: use /var/lib/libvirt/images if it
 // exists and is non-empty; otherwise use /var/lib/kui/images.
 // When KUI_TEST_PROVISION_POOL_PATH is set (e.g. in tests), returns that path.
-func SelectPoolPath() (PoolPathResult, error) {
+// When pathPrefix is non-empty (after TrimSpace), paths are resolved under the
+// runtime prefix; when empty, behavior matches the legacy unprefixed resolution.
+func SelectPoolPath(pathPrefix string) (PoolPathResult, error) {
+	pref := strings.TrimSpace(pathPrefix)
 	if override := os.Getenv("KUI_TEST_PROVISION_POOL_PATH"); override != "" {
-		return PoolPathResult{Path: override, Created: false}, nil
+		if pref == "" {
+			return PoolPathResult{Path: override, Created: false}, nil
+		}
+		trimmed := strings.TrimSpace(override)
+		return PoolPathResult{Path: prefix.Resolve(pathPrefix, trimmed), Created: false}, nil
 	}
-	entries, err := os.ReadDir(DefaultPoolPath)
+	libvirtPath := DefaultPoolPath
+	kuiPath := DefaultKuiPoolPath
+	if pref != "" {
+		libvirtPath = prefix.Resolve(pathPrefix, DefaultPoolPath)
+		kuiPath = prefix.Resolve(pathPrefix, DefaultKuiPoolPath)
+	}
+	entries, err := os.ReadDir(libvirtPath)
 	if err == nil && len(entries) > 0 {
-		return PoolPathResult{Path: DefaultPoolPath, Created: false}, nil
+		return PoolPathResult{Path: libvirtPath, Created: false}, nil
 	}
-	return PoolPathResult{Path: DefaultKuiPoolPath, Created: false}, nil
+	return PoolPathResult{Path: kuiPath, Created: false}, nil
 }
 
 // EnsurePoolDir creates the directory for the pool.

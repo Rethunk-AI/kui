@@ -78,6 +78,7 @@ type routerState struct {
 	configPresent     bool
 	dbPath            string
 	gitPath           string
+	pathPrefix        string
 	broadcaster       *broadcaster.Broadcaster
 	connectorProvider ConnectorProvider
 	setupConnectFunc  SetupConnectFunc
@@ -258,6 +259,7 @@ func NewRouter(opts RouterOptions) http.Handler {
 		configPresent:     opts.ConfigPresent,
 		dbPath:            opts.DBPath,
 		gitPath:           opts.GitPath,
+		pathPrefix:        opts.PathPrefix,
 		broadcaster:       bc,
 		connectorProvider: opts.ConnectorProvider,
 		setupConnectFunc:  opts.SetupConnectFunc,
@@ -3371,7 +3373,7 @@ func (r *routerState) provisionHostSetup() http.HandlerFunc {
 			return
 		}
 
-		poolPathResult, err := provision.SelectPoolPath()
+		poolPathResult, err := provision.SelectPoolPath(r.pathPrefix)
 		if err != nil {
 			writeJSONError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -3509,7 +3511,7 @@ func (r *routerState) provisionHost() http.HandlerFunc {
 
 		poolPath := payload.PoolPath
 		if poolPath == "" {
-			pathResult, err := provision.SelectPoolPath()
+			pathResult, err := provision.SelectPoolPath(r.pathPrefix)
 			if err != nil {
 				writeJSONError(w, http.StatusInternalServerError, err.Error())
 				return

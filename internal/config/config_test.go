@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kui/kui/internal/prefix"
 )
 
 const validJWTSecret = "0123456789abcdef0123456789abcdef"
@@ -465,6 +467,7 @@ func TestLoadWithArgs(t *testing.T) {
 	t.Parallel()
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 	_ = os.Unsetenv("KUI_CONFIG")
+	_ = os.Unsetenv("KUI_PREFIX")
 
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config.yaml")
@@ -490,7 +493,10 @@ jwt_secret: "` + validJWTSecret + `"
 }
 
 func TestLoadWithArgs_EnvOverride(t *testing.T) {
-	t.Cleanup(func() { os.Unsetenv("KUI_CONFIG") })
+	t.Cleanup(func() {
+		os.Unsetenv("KUI_CONFIG")
+		os.Unsetenv("KUI_PREFIX")
+	})
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 
 	tempDir := t.TempDir()
@@ -514,6 +520,160 @@ jwt_secret: "` + validJWTSecret + `"
 	}
 	if path != configPath {
 		t.Errorf("path = %q, want %q", path, configPath)
+	}
+}
+
+func TestLoadWithArgs_ConfigWinsOverKUI_CONFIG(t *testing.T) {
+	t.Cleanup(func() {
+		os.Unsetenv("KUI_CONFIG")
+		os.Unsetenv("KUI_PREFIX")
+	})
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
+
+	tempDir := t.TempDir()
+	pathA := filepath.Join(tempDir, "a.yaml")
+	pathB := filepath.Join(tempDir, "b.yaml")
+	contentA := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + validJWTSecret + `"
+`)
+	contentB := []byte(`hosts:
+  - id: remote
+    uri: qemu:///system
+default_host: remote
+jwt_secret: "` + validJWTSecret + `"
+`)
+	if err := os.WriteFile(pathA, contentA, 0o600); err != nil {
+		t.Fatalf("write a: %v", err)
+	}
+	if err := os.WriteFile(pathB, contentB, 0o600); err != nil {
+		t.Fatalf("write b: %v", err)
+	}
+	if err := os.Setenv("KUI_CONFIG", pathA); err != nil {
+		t.Fatalf("setenv KUI_CONFIG: %v", err)
+	}
+
+	cfg, resolved, err := LoadWithArgs([]string{"--config", pathB})
+	if err != nil {
+		t.Fatalf("LoadWithArgs: %v", err)
+	}
+	if resolved != pathB {
+		t.Errorf("resolved path = %q, want %q", resolved, pathB)
+	}
+	if cfg.DefaultHost != "remote" {
+		t.Errorf("DefaultHost = %q, want remote (config B)", cfg.DefaultHost)
+	}
+}
+
+func TestLoadWithOptions_BootstrapPrefixNormalizesYAMLPaths(t *testing.T) {
+	t.Parallel()
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
+
+	root := t.TempDir()
+	logical := "/etc/kui/config.yaml"
+	physical := filepath.Join(root, "etc", "kui", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(physical), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configContent := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+db:
+  path: /var/lib/kui/kui.db
+git:
+  path: /var/lib/kui
+jwt_secret: "` + validJWTSecret + `"
+`)
+	if err := os.WriteFile(physical, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadWithOptions(logical, LoadOptions{BootstrapPrefix: root})
+	if err != nil {
+		t.Fatalf("LoadWithOptions: %v", err)
+	}
+	wantDB := prefix.Resolve(root, "/var/lib/kui/kui.db")
+	wantGit := prefix.Resolve(root, "/var/lib/kui")
+	if cfg.DB.Path != wantDB {
+		t.Errorf("DB.Path = %q, want %q", cfg.DB.Path, wantDB)
+	}
+	if cfg.Git.Path != wantGit {
+		t.Errorf("Git.Path = %q, want %q", cfg.Git.Path, wantGit)
+	}
+}
+
+func TestLoadWithOptions_YAMLRuntimePrefixNormalizesPaths(t *testing.T) {
+	t.Parallel()
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
+
+	runtimeRoot := filepath.Join(t.TempDir(), "yaml-prefix-root")
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	configContent := []byte(`runtime:
+  prefix: "` + runtimeRoot + `"
+hosts:
+  - id: local
+    uri: qemu:///system
+db:
+  path: /var/lib/kui/kui.db
+git:
+  path: /var/lib/kui
+jwt_secret: "` + validJWTSecret + `"
+`)
+	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadWithOptions(configPath, LoadOptions{})
+	if err != nil {
+		t.Fatalf("LoadWithOptions: %v", err)
+	}
+	wantDB := prefix.Resolve(runtimeRoot, "/var/lib/kui/kui.db")
+	wantGit := prefix.Resolve(runtimeRoot, "/var/lib/kui")
+	if cfg.DB.Path != wantDB {
+		t.Errorf("DB.Path = %q, want %q", cfg.DB.Path, wantDB)
+	}
+	if cfg.Git.Path != wantGit {
+		t.Errorf("Git.Path = %q, want %q", cfg.Git.Path, wantGit)
+	}
+}
+
+func TestLoadWithArgs_BootstrapResolvesConfigPathAndPaths(t *testing.T) {
+	t.Cleanup(func() {
+		os.Unsetenv("KUI_CONFIG")
+		os.Unsetenv("KUI_PREFIX")
+	})
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
+
+	root := t.TempDir()
+	logical := "/etc/kui/config.yaml"
+	physical := filepath.Join(root, "etc", "kui", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(physical), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configContent := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+db:
+  path: /var/lib/kui/kui.db
+git:
+  path: /var/lib/kui
+jwt_secret: "` + validJWTSecret + `"
+`)
+	if err := os.WriteFile(physical, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, resolved, err := LoadWithArgs([]string{"--prefix", root, "--config", logical})
+	if err != nil {
+		t.Fatalf("LoadWithArgs: %v", err)
+	}
+	if resolved != physical {
+		t.Errorf("resolved = %q, want %q", resolved, physical)
+	}
+	wantDB := prefix.Resolve(root, "/var/lib/kui/kui.db")
+	if cfg.DB.Path != wantDB {
+		t.Errorf("DB.Path = %q, want %q", cfg.DB.Path, wantDB)
 	}
 }
 

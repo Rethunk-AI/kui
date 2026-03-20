@@ -11,6 +11,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/kui/kui/internal/prefix"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -72,7 +74,13 @@ type DB struct {
 	Path string `yaml:"path"`
 }
 
+// Runtime holds optional install/runtime settings from YAML.
+type Runtime struct {
+	Prefix string `yaml:"prefix"`
+}
+
 type Config struct {
+	Runtime             Runtime     `yaml:"runtime"`
 	Hosts               []Host      `yaml:"hosts"`
 	VMDefaults          VMDefaults  `yaml:"vm_defaults"`
 	DefaultHost         string      `yaml:"default_host"`
@@ -99,36 +107,88 @@ const (
 	defaultAllowedOriginLocalhost = "http://localhost:5173"
 )
 
+// trackedString is a flag.Value that records whether the flag was set on the command line.
+type trackedString struct {
+	value string
+	set   bool
+}
+
+func (t *trackedString) String() string { return t.value }
+
+func (t *trackedString) Set(s string) error {
+	t.value = s
+	t.set = true
+	return nil
+}
+
+// LoadOptions configures [LoadWithOptions]. BootstrapPrefix re-roots the config file
+// path for reading and participates in effective prefix (it wins over YAML runtime.prefix).
+type LoadOptions struct {
+	BootstrapPrefix string
+}
+
 func LoadWithArgs(args []string) (*Config, string, error) {
-	var configPath string
+	configPathFlag := &trackedString{value: DefaultConfigPath}
+	prefixFlag := &trackedString{}
+
 	fs := flag.NewFlagSet("kui", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	fs.StringVar(&configPath, "config", DefaultConfigPath, "path to yaml config file")
+	fs.Var(configPathFlag, "config", "path to yaml config file")
+	fs.Var(prefixFlag, "prefix", "runtime filesystem root (chroot-style path resolution)")
 	if err := fs.Parse(args); err != nil {
 		return nil, "", err
 	}
 
-	if envConfigPath := strings.TrimSpace(os.Getenv("KUI_CONFIG")); envConfigPath != "" {
-		configPath = envConfigPath
+	configPath := strings.TrimSpace(configPathFlag.value)
+	if !configPathFlag.set {
+		if envConfig := strings.TrimSpace(os.Getenv("KUI_CONFIG")); envConfig != "" {
+			configPath = envConfig
+		}
 	}
-
-	cfg, err := Load(configPath)
-	if err != nil {
-		return nil, configPath, err
-	}
-
-	return cfg, configPath, nil
-}
-
-func Load(path string) (*Config, error) {
-	configPath := strings.TrimSpace(path)
 	if configPath == "" {
 		configPath = DefaultConfigPath
 	}
 
-	raw, err := os.ReadFile(configPath)
+	bootstrap := strings.TrimSpace(prefixFlag.value)
+	if !prefixFlag.set {
+		bootstrap = strings.TrimSpace(os.Getenv("KUI_PREFIX"))
+	}
+
+	readPath := resolvedConfigReadPath(configPath, bootstrap)
+	cfg, err := loadFromResolvedPath(readPath, LoadOptions{BootstrapPrefix: bootstrap})
 	if err != nil {
-		return nil, fmt.Errorf("read config %q: %w", configPath, err)
+		return nil, readPath, err
+	}
+	return cfg, readPath, nil
+}
+
+func Load(path string) (*Config, error) {
+	return LoadWithOptions(path, LoadOptions{})
+}
+
+// LoadWithOptions loads YAML from path (candidate config path before bootstrap join).
+// When BootstrapPrefix is non-empty, the file is read from prefix.Resolve(bootstrap, candidate).
+func LoadWithOptions(path string, opts LoadOptions) (*Config, error) {
+	candidate := strings.TrimSpace(path)
+	if candidate == "" {
+		candidate = DefaultConfigPath
+	}
+	readPath := resolvedConfigReadPath(candidate, opts.BootstrapPrefix)
+	return loadFromResolvedPath(readPath, opts)
+}
+
+func resolvedConfigReadPath(candidate, bootstrap string) string {
+	b := strings.TrimSpace(bootstrap)
+	if b == "" {
+		return candidate
+	}
+	return prefix.Resolve(b, candidate)
+}
+
+func loadFromResolvedPath(readPath string, opts LoadOptions) (*Config, error) {
+	raw, err := os.ReadFile(readPath)
+	if err != nil {
+		return nil, fmt.Errorf("read config %q: %w", readPath, err)
 	}
 
 	var cfg Config
@@ -141,11 +201,37 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	effective := strings.TrimSpace(opts.BootstrapPrefix)
+	if effective == "" {
+		effective = strings.TrimSpace(cfg.Runtime.Prefix)
+	}
+	normalizeLocalPathFields(&cfg, effective)
+
 	if err := validate(cfg); err != nil {
 		return nil, err
 	}
 
 	return &cfg, nil
+}
+
+func normalizeLocalPathFields(cfg *Config, effectivePrefix string) {
+	p := strings.TrimSpace(effectivePrefix)
+	if p == "" {
+		return
+	}
+	cfg.DB.Path = prefix.Resolve(p, cfg.DB.Path)
+	cfg.Git.Path = prefix.Resolve(p, cfg.Git.Path)
+	for i := range cfg.Hosts {
+		if cfg.Hosts[i].Keyfile == nil {
+			continue
+		}
+		k := strings.TrimSpace(*cfg.Hosts[i].Keyfile)
+		if k == "" {
+			continue
+		}
+		resolved := prefix.Resolve(p, k)
+		cfg.Hosts[i].Keyfile = &resolved
+	}
 }
 
 func applyDefaults(cfg *Config) {

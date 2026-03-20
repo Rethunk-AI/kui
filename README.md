@@ -19,6 +19,20 @@ Web-based KVM User Interface for users who prefer a UI over CLI. Connects to lib
 3. Open the UI in a browser; complete setup (admin account, hosts).
 4. Log in and manage VMs. See [Admin Guide](docs/admin-guide.md) and [User Guide](docs/user-guide.md).
 
+### Runtime prefix (`--prefix` / `KUI_PREFIX`)
+
+KUI can treat a single directory as a **virtual filesystem root** for every local path it opens (config, SQLite, git data, TLS PEMs, `KUI_WEB_DIR`, SSH key paths in config, default pool directories, and related overrides). This is a **chroot-style mental model** only: the process is **not** placed in a literal `chroot(2)` jail; paths are rewritten before `open(2)`.
+
+With a non-empty prefix, a logical path such as `/etc/kui/config.yaml` is read from `{prefix}/etc/kui/config.yaml` on disk (leading `/` does **not** mean the host root).
+
+Minimal example:
+
+```bash
+kui --prefix "$HOME/kui-root" --config /etc/kui/config.yaml --listen :8080
+```
+
+Here the config file is loaded from `$HOME/kui-root/etc/kui/config.yaml`. Other absolute-style paths in config and env behave the same way. For a full layout, precedence (`--prefix` vs `KUI_PREFIX` vs optional YAML `runtime.prefix`), TLS/static assets, libvirt caveats, and a manual smoke checklist, see [Contained / non-root mode in the Admin Guide](docs/admin-guide.md#contained-non-root-mode-prefix).
+
 ## Build
 
 Libvirt bindings require CGO and `libvirt-dev` headers. If those headers are unavailable, build and test without libvirt:

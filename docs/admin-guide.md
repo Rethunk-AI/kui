@@ -52,6 +52,91 @@ Config is written by the setup wizard. Full YAML structure and env overrides are
 
 ---
 
+<a id="contained-non-root-mode-prefix"></a>
+
+## Contained / non-root mode (`--prefix`)
+
+KUI supports a **runtime prefix**: `--prefix` on the CLI or the `KUI_PREFIX` environment variable, and optionally `runtime.prefix` in YAML. When the effective prefix is non-empty, the process resolves **local** filesystem paths as if that directory were `/` (chroot-style **re-rooting**, not a real `chroot(2)`). A path like `/var/lib/kui/kui.db` opens as `{prefix}/var/lib/kui/kui.db`. This is useful for non-root installs, relocatable trees, and tests without writing under the real FHS.
+
+Paths that are **not** re-rooted include libvirt URIs, pool **names** (non-path strings), JWT/session settings, and host discovery paths used by KVM checks (for example `/dev/kvm`, `/etc/os-release`).
+
+### Creating a writable prefix tree
+
+Create directories that match the logical paths your config uses (defaults assume FHS-style locations). For a minimal layout that mirrors common defaults:
+
+```bash
+PREFIX="$HOME/kui-run"   # or: PREFIX="$(mktemp -d)"
+mkdir -p "$PREFIX/etc/kui" "$PREFIX/var/lib/kui"
+# If you rely on default pool directory heuristics under prefix:
+mkdir -p "$PREFIX/var/lib/libvirt/images"
+```
+
+Place `config.yaml` under `{prefix}/etc/kui/` when using logical path `/etc/kui/config.yaml`, or adjust `mkdir` to match your YAML.
+
+### Sample config (absolute-style paths under prefix)
+
+Use normal absolute-looking strings in YAML; with a prefix set, they refer to **locations under the prefix**, not the host root:
+
+```yaml
+# Optional (lowest precedence vs --prefix / KUI_PREFIX); omit in most deployments:
+# runtime:
+#   prefix: /opt/kui-run
+
+db:
+  path: /var/lib/kui/kui.db
+
+git:
+  path: /var/lib/kui
+
+hosts:
+  - id: local
+    uri: qemu:///system
+    keyfile: null
+  # Remote example: key path is also under prefix when prefix is set
+  # - id: remote
+  #   uri: qemu+ssh://user@host/system
+  #   keyfile: /home/kui/.ssh/id_ed25519
+
+jwt_secret: "<set-via-setup-or-generate>"
+```
+
+On disk with `PREFIX=/opt/kui-run`, the DB file above is opened at `/opt/kui-run/var/lib/kui/kui.db`.
+
+### Prefix precedence (highest first)
+
+1. **`--prefix`** — if you pass this flag, it wins.
+2. **`KUI_PREFIX`** — used when the `--prefix` flag was not set on the command line.
+3. **`runtime.prefix` in YAML** — used only when neither `--prefix` nor `KUI_PREFIX` supplies a non-empty value after trimming. It applies after the config file is loaded, so it does not change which path was used to **find** that file; use the flag or env when you want the config file itself to be read from under a prefix tree.
+
+The bootstrap prefix (`--prefix` / `KUI_PREFIX`) is also used to resolve the **config path** before reading (for example `--prefix /tmp/r --config /etc/kui/config.yaml` reads `/tmp/r/etc/kui/config.yaml`).
+
+### TLS PEMs and `KUI_WEB_DIR`
+
+When a non-empty effective prefix is in use:
+
+- **`--tls-cert`** and **`--tls-key`** are resolved under the prefix the same way as other filesystem paths (for example logical `/etc/kui/tls/cert.pem` → `{prefix}/etc/kui/tls/cert.pem`).
+- **`KUI_WEB_DIR`**, when set, is resolved under the effective prefix used for static files (bootstrap prefix from flag/env, or `runtime.prefix` from YAML when the bootstrap prefix is empty).
+
+### When not to use a prefix
+
+Use **empty prefix** (omit `--prefix`, `KUI_PREFIX`, and YAML `runtime.prefix`) when:
+
+- KUI should use **real host paths** for SQLite, git data, TLS material, and pool directories—typical **system libvirt** deployments on FHS (`/var/lib/libvirt/images`, `/var/lib/kui`, `/etc/kui`, …).
+- You expect logical `/var/...` paths in config to mean the **actual** host filesystem. With a prefix set, default pool path probes (for example under `/var/lib/libvirt/images`) are evaluated under the prefix; **libvirt on the host** still uses host paths unless you mirror layout under the prefix, use bind mounts, or align pool configuration explicitly.
+
+### Manual smoke checklist (after `go build`)
+
+Optional steps for humans validating a local binary; **automated tests are canonical**—run `go test ./...` or `make all` for project verification.
+
+1. `export PREFIX="$(mktemp -d)"` (or choose a fixed directory under `$HOME`).
+2. `mkdir -p "$PREFIX/etc/kui" "$PREFIX/var/lib/kui"` and any other logical paths your config references (including default pool dirs if you exercise provisioning defaults).
+3. Install or author a minimal `config.yaml` under `$PREFIX/etc/kui/` using absolute-style paths as in the sample above; confirm files you care about exist only under `$PREFIX/...`.
+4. From the repo: `go build -o bin/kui ./cmd/kui`, then run (example) `./bin/kui --prefix "$PREFIX" --config /etc/kui/config.yaml --listen 127.0.0.1:0` (adjust `--listen` as needed).
+
+**Note:** Full VM lifecycle still depends on **host** libvirt and KVM; a contained smoke run may only confirm HTTP listener, config load, and DB open. Libvirt URIs and host device access are unchanged by prefix.
+
+---
+
 ## Deployment
 
 | Topic | Document |

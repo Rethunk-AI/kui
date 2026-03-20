@@ -11,8 +11,13 @@ RestartSec=5
 
 ExecStart=/usr/local/bin/kui --config /etc/kui/config.yaml
 
+# Alternate: relocatable tree — logical /etc and /var paths open under the prefix:
+#   /opt/kui-run/etc/kui/config.yaml, /opt/kui-run/var/lib/kui/..., etc.
+# ExecStart=/usr/local/bin/kui --prefix /opt/kui-run --config /etc/kui/config.yaml
+
 # Runtime data: git templates, audit chain, SQLite DB
-# Must exist and be writable by the service user
+# Must exist and be writable by the service user.
+# WorkingDirectory is not a substitute for --prefix; prefix resolution is independent.
 WorkingDirectory=/var/lib/kui
 
 # Optional: override config path via environment

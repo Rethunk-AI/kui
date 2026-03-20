@@ -50,3 +50,18 @@ KUI is deployed via systemd as the primary mechanism. For TLS and reverse-proxy 
 - **Restart**: `on-failure`
 - **Config**: `--config /etc/kui/config.yaml` or `KUI_CONFIG` env var
 - **Runtime data**: `/var/lib/kui/` for SQLite DB, git-backed templates, and audit chain
+
+## Optional: contained layout with `--prefix`
+
+The default unit assumes **real FHS paths** on the host (`/etc/kui`, `/var/lib/kui`). For a **relocatable tree** under a single directory, run KUI with `--prefix` (or set `KUI_PREFIX` in the unit). Logical paths stay the same in `ExecStart`; they are opened **under** the prefix on disk.
+
+**Example:** If all state lives under `/opt/kui-run`, create `/opt/kui-run/etc/kui/config.yaml`, `/opt/kui-run/var/lib/kui`, and matching permissions for the service user. Then use a command equivalent to:
+
+```ini
+# Alternate (commented in kui.service): relocatable root
+# ExecStart=/usr/local/bin/kui --prefix /opt/kui-run --config /etc/kui/config.yaml
+```
+
+That reads config from `/opt/kui-run/etc/kui/config.yaml` and places DB/git defaults under `/opt/kui-run/var/lib/kui/...` when config uses the usual absolute-style paths.
+
+**`WorkingDirectory` vs `--prefix`:** `WorkingDirectory=` only sets the process cwd for relative paths in **other** tools and subprocess behavior; KUI’s prefix resolution does **not** use `WorkingDirectory` as the runtime root. Set `--prefix` when you want FHS-like paths to map under a relocatable directory. Full semantics and precedence (`--prefix`, `KUI_PREFIX`, optional YAML `runtime.prefix`) are in [docs/admin-guide.md](../../docs/admin-guide.md#contained-non-root-mode-prefix).

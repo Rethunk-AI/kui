@@ -2,6 +2,16 @@
 
 This document covers TLS and reverse-proxy deployment for KUI. For systemd setup, see [deploy/systemd/README.md](../deploy/systemd/README.md). For first-run setup and config, see [admin-guide.md](admin-guide.md).
 
+## Relocatable / contained install (`--prefix`)
+
+KUI can run with a **runtime prefix** (`--prefix` or `KUI_PREFIX`, optionally `runtime.prefix` in YAML when flag/env are unset). All **local** paths KUI opens are resolved under that directory using a chroot-style rule (see [Contained / non-root mode](admin-guide.md#contained-non-root-mode-prefix) in the Admin Guide). This supports a **relocatable tree** (for example `/opt/kui-run/etc/kui`, `/opt/kui-run/var/lib/kui`) owned by a dedicated user without scattering state across the real `/etc` and `/var`.
+
+**Permissions:** The service user needs read/write access to the prefix tree (config, SQLite and WAL sidecars, git template directory, any TLS PEMs and optional `KUI_WEB_DIR`). Use `chown` / `chmod` (or ACLs) so only that user can read private keys and the database.
+
+**systemd:** You can keep the unit’s primary `ExecStart` as an FHS install, or use `--prefix` with a directory that **mirrors** the logical layout (`etc/kui`, `var/lib/kui`, pool-related paths if defaults apply). A commented `ExecStart` pattern appears in [deploy/systemd/kui.service](../deploy/systemd/kui.service) and [deploy/systemd/README.md](../deploy/systemd/README.md). `WorkingDirectory=` is independent of prefix: it does not substitute for `--prefix`, and relative paths in YAML are still resolved under the prefix when a prefix is set—not relative to `WorkingDirectory`.
+
+**Production:** Prefer **empty prefix** with real host paths when KUI must align with system libvirt pool locations on disk; use an explicit prefix when you intentionally isolate all KUI-managed files under one tree. See the Admin Guide for precedence and libvirt caveats.
+
 ## Service modes
 
 | Mode | Use case |

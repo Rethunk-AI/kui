@@ -603,6 +603,40 @@ jwt_secret: "` + validJWTSecret + `"
 	}
 }
 
+func TestLoadWithOptions_BootstrapPrefixWinsOverYAMLRuntimePrefix(t *testing.T) {
+	t.Parallel()
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
+
+	yamlClaimedRoot := filepath.Join(t.TempDir(), "yaml-prefix-should-lose")
+	bootstrapRoot := t.TempDir()
+	logical := "/etc/kui/config.yaml"
+	physical := filepath.Join(bootstrapRoot, "etc", "kui", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(physical), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configContent := []byte(`runtime:
+  prefix: "` + yamlClaimedRoot + `"
+hosts:
+  - id: local
+    uri: qemu:///system
+db:
+  path: /var/lib/kui/kui.db
+jwt_secret: "` + validJWTSecret + `"
+`)
+	if err := os.WriteFile(physical, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadWithOptions(logical, LoadOptions{BootstrapPrefix: bootstrapRoot})
+	if err != nil {
+		t.Fatalf("LoadWithOptions: %v", err)
+	}
+	wantDB := prefix.Resolve(bootstrapRoot, "/var/lib/kui/kui.db")
+	if cfg.DB.Path != wantDB {
+		t.Errorf("DB.Path = %q, want bootstrap-normalized %q (not YAML runtime.prefix)", cfg.DB.Path, wantDB)
+	}
+}
+
 func TestLoadWithOptions_YAMLRuntimePrefixNormalizesPaths(t *testing.T) {
 	t.Parallel()
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
@@ -672,8 +706,107 @@ jwt_secret: "` + validJWTSecret + `"
 		t.Errorf("resolved = %q, want %q", resolved, physical)
 	}
 	wantDB := prefix.Resolve(root, "/var/lib/kui/kui.db")
+	wantGit := prefix.Resolve(root, "/var/lib/kui")
 	if cfg.DB.Path != wantDB {
 		t.Errorf("DB.Path = %q, want %q", cfg.DB.Path, wantDB)
+	}
+	if cfg.Git.Path != wantGit {
+		t.Errorf("Git.Path = %q, want %q", cfg.Git.Path, wantGit)
+	}
+}
+
+func TestLoadWithArgs_KUI_PREFIXNormalizesPaths(t *testing.T) {
+	t.Cleanup(func() {
+		os.Unsetenv("KUI_CONFIG")
+		os.Unsetenv("KUI_PREFIX")
+	})
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
+
+	root := t.TempDir()
+	if err := os.Setenv("KUI_PREFIX", root); err != nil {
+		t.Fatalf("setenv KUI_PREFIX: %v", err)
+	}
+
+	logical := "/etc/kui/config.yaml"
+	physical := filepath.Join(root, "etc", "kui", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(physical), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configContent := []byte(`hosts:
+  - id: remote
+    uri: qemu+ssh://user@host/system
+    keyfile: /root/.ssh/kui_ed25519
+db:
+  path: /var/lib/kui/kui.db
+git:
+  path: /var/lib/kui
+jwt_secret: "` + validJWTSecret + `"
+`)
+	if err := os.WriteFile(physical, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, resolved, err := LoadWithArgs([]string{"--config", logical})
+	if err != nil {
+		t.Fatalf("LoadWithArgs: %v", err)
+	}
+	if resolved != physical {
+		t.Errorf("resolved = %q, want %q", resolved, physical)
+	}
+	wantDB := prefix.Resolve(root, "/var/lib/kui/kui.db")
+	wantGit := prefix.Resolve(root, "/var/lib/kui")
+	wantKey := prefix.Resolve(root, "/root/.ssh/kui_ed25519")
+	if cfg.DB.Path != wantDB {
+		t.Errorf("DB.Path = %q, want %q", cfg.DB.Path, wantDB)
+	}
+	if cfg.Git.Path != wantGit {
+		t.Errorf("Git.Path = %q, want %q", cfg.Git.Path, wantGit)
+	}
+	if cfg.Hosts[0].Keyfile == nil || *cfg.Hosts[0].Keyfile != wantKey {
+		t.Errorf("Keyfile = %v, want %q", cfg.Hosts[0].Keyfile, wantKey)
+	}
+}
+
+func TestLoadWithOptions_EnvOverridesNormalizedUnderBootstrapPrefix(t *testing.T) {
+	t.Cleanup(func() {
+		os.Unsetenv("KUI_DB_PATH")
+		os.Unsetenv("KUI_GIT_PATH")
+	})
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
+
+	root := t.TempDir()
+	if err := os.Setenv("KUI_DB_PATH", "/override/db.sqlite"); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+	if err := os.Setenv("KUI_GIT_PATH", "/override/git"); err != nil {
+		t.Fatalf("setenv: %v", err)
+	}
+
+	logical := "/etc/kui/config.yaml"
+	physical := filepath.Join(root, "etc", "kui", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(physical), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configContent := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+jwt_secret: "` + validJWTSecret + `"
+`)
+	if err := os.WriteFile(physical, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadWithOptions(logical, LoadOptions{BootstrapPrefix: root})
+	if err != nil {
+		t.Fatalf("LoadWithOptions: %v", err)
+	}
+	wantDB := prefix.Resolve(root, "/override/db.sqlite")
+	wantGit := prefix.Resolve(root, "/override/git")
+	if cfg.DB.Path != wantDB {
+		t.Errorf("DB.Path = %q, want %q", cfg.DB.Path, wantDB)
+	}
+	if cfg.Git.Path != wantGit {
+		t.Errorf("Git.Path = %q, want %q", cfg.Git.Path, wantGit)
 	}
 }
 

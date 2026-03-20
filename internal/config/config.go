@@ -139,11 +139,10 @@ func LoadWithArgs(args []string) (*Config, string, error) {
 		return nil, "", err
 	}
 
+	// Match cmd/kui parseFlags: KUI_CONFIG applies only when --config was not set.
 	configPath := strings.TrimSpace(configPathFlag.value)
-	if !configPathFlag.set {
-		if envConfig := strings.TrimSpace(os.Getenv("KUI_CONFIG")); envConfig != "" {
-			configPath = envConfig
-		}
+	if envConfig := strings.TrimSpace(os.Getenv("KUI_CONFIG")); envConfig != "" && !configPathFlag.set {
+		configPath = envConfig
 	}
 	if configPath == "" {
 		configPath = DefaultConfigPath
@@ -214,6 +213,8 @@ func loadFromResolvedPath(readPath string, opts LoadOptions) (*Config, error) {
 	return &cfg, nil
 }
 
+// normalizeLocalPathFields applies prefix.Resolve to every local filesystem path held in [Config].
+// Pool identifiers (e.g. template_storage, default_pool) are not paths and are left unchanged.
 func normalizeLocalPathFields(cfg *Config, effectivePrefix string) {
 	p := strings.TrimSpace(effectivePrefix)
 	if p == "" {

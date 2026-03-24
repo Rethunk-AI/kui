@@ -57,41 +57,41 @@ Do **not** invent features; every doc change must match shipped specs and `specs
 ## Ordered tasks (with ownership)
 
 1. **Developer — Canonical inventory**  
-   - [ ] Enumerate `specs/done` directory names; confirm count **25** and set matches plan list above.  
-   - [ ] Update `TODO.md`: replace “All 18 specs” / “Done specs | 18” with **25**; append the **seven** missing IDs to the comma list: `gap-remediation`, `feat-host-provisioning`, `gap-401-session-audit`, `feat-setup-wizard-ui`, `gap-domain-xml-network`, `gap-template-network`, `setup-host-validation`.  
-   - [ ] Re-read “Gap audit” paragraph: ensure references to gaps 1–8 still align with the **five** gap-theme specs (no new claims).
+   - [x] Enumerate `specs/done` directory names; confirm count **25** and set matches plan list above.  
+   - [x] Update `TODO.md`: replace “All 18 specs” / “Done specs | 18” with **25**; append the **seven** missing IDs to the comma list: `gap-remediation`, `feat-host-provisioning`, `gap-401-session-audit`, `feat-setup-wizard-ui`, `gap-domain-xml-network`, `gap-template-network`, `setup-host-validation`.  
+   - [x] Re-read “Gap audit” paragraph: ensure references to gaps 1–8 still align with the **five** gap-theme specs (no new claims).
 
 2. **Developer — Backlog v2 table** (`docs/prd/backlog.md`)  
-   - [ ] For rows that are **shipped**, change narrative from “future v2” to **Done** (or move rows to a “Completed (see specs)” subsection).  
-   - [ ] Add markdown links to canonical spec artifacts, e.g.  
+   - [x] For rows that are **shipped**, change narrative from “future v2” to **Done** (or move rows to a “Completed (see specs)” subsection).  
+   - [x] Add markdown links to canonical spec artifacts, e.g.  
      - Keyboard shortcuts → `specs/done/feat-keyboard-shortcuts/plan.md` (or `spec.md` if present and preferred)  
      - WCAG a11y → `feat-a11y`  
      - Stuck VM → `feat-stuck-vm`  
      - Orphan bulk → `feat-orphan-bulk`  
      - Domain XML edit → `feat-domain-xml-edit`  
-   - [ ] Keep **v3** (backup/restore, import/export) clearly future.  
-   - [ ] Optionally add short “Gap closure” bullets linking `gap-audit`, `gap-remediation`, `gap-401-session-audit`, `gap-domain-xml-network`, `gap-template-network` if decision-log/backlog readers expect them—only if it reduces confusion without duplicating decision-log.
+   - [x] Keep **v3** (backup/restore, import/export) clearly future.  
+   - [x] Optionally add short “Gap closure” bullets linking `gap-audit`, `gap-remediation`, `gap-401-session-audit`, `gap-domain-xml-network`, `gap-template-network` if decision-log/backlog readers expect them—only if it reduces confusion without duplicating decision-log.
 
 3. **Developer — PRD §2 reconcile** (`docs/prd.md`)  
-   - [ ] Line ~20: split **still open** vs **shipped**. Stuck VM, orphan bulk, domain XML edit are implemented per done specs—describe as **shipped** with links; do not label them “all v2” in a way that implies backlog-only.  
-   - [ ] Ensure §4 references row for `backlog.md` still accurate after backlog edit.
+   - [x] Line ~20: split **still open** vs **shipped**. Stuck VM, orphan bulk, domain XML edit are implemented per done specs—describe as **shipped** with links; do not label them “all v2” in a way that implies backlog-only.  
+   - [x] Ensure §4 references row for `backlog.md` still accurate after backlog edit.
 
 4. **Developer — Continue prompt** (`Continue_TODO_Prompt.md`)  
-   - [ ] Remove or replace game/checker-specific explorer bullets (PRD path, checker, scoring) with **KUI**-accurate paths (`docs/prd.md`, `docs/`, `specs/done/`, `specs/active/`).  
-   - [ ] Align Phase 0 with repo rules (`make all` where appropriate) without contradicting `AGENTS.md` / `.cursor/rules/workflow.mdc`.
+   - [x] Remove or replace game/checker-specific explorer bullets (PRD path, checker, scoring) with **KUI**-accurate paths (`docs/prd.md`, `docs/`, `specs/done/`, `specs/active/`).  
+   - [x] Align Phase 0 with repo rules (`make all` where appropriate) without contradicting `AGENTS.md` / `.cursor/rules/workflow.mdc`.
 
 5. **Developer — Optional Makefile**  
-   - [ ] If team wants a single command: add e.g. `specs-list` that prints sorted `specs/done` basenames (e.g. `ls -1 specs/done \| sort`).  
-   - [ ] Document in plan verification below; **no** requirement to wire CI unless explicitly chosen later.
+   - [x] If team wants a single command: add e.g. `specs-list` that prints sorted `specs/done` basenames (e.g. `ls -1 specs/done \| sort`).  
+   - [x] Document in plan verification below; **no** requirement to wire CI unless explicitly chosen later.
 
 6. **Developer — Dashboard sweep (second pass)**  
-   - [ ] Grep (case-insensitive as needed) for stale patterns: `All 18`, `Done specs | 18`, `18 specs`, `done specs`, standalone `\b18\b` near “spec” context, `v2 — Enhancements` prose that implies unimplemented shipped features.  
-   - [ ] Files to include: `README.md`, `TODO.md`, `docs/**/*.md`, `AGENTS.md`, `.github/**/*.md`, `.github/workflows/*`, root `*.md`.  
-   - [ ] Fix or ticket any drift found (same PR as above if trivial).
+   - [x] Grep (case-insensitive as needed) for stale patterns: `All 18`, `Done specs | 18`, `18 specs`, `done specs`, standalone `\b18\b` near “spec” context, `v2 — Enhancements` prose that implies unimplemented shipped features.  
+   - [x] Files to include: `README.md`, `TODO.md`, `docs/**/*.md`, `AGENTS.md`, `.github/**/*.md`, `.github/workflows/*`, root `*.md`.  
+   - [x] Fix or ticket any drift found (same PR as above if trivial).
 
 7. **Verifier**  
-   - [ ] Confirm no invented features; links resolve.  
-   - [ ] `make all` if only docs/Makefile touched per developer report; if Makefile extended, run `make specs-list` (or equivalent) once.
+   - [x] Confirm no invented features; links resolve.  
+   - [x] `make specs-list` run and matched `ls -1 specs/done | sort`. `make all` not green on verifier/developer hosts (missing libvirt pkg-config); unrelated to `specs-list` addition — confirm on a host with libvirt dev packages.
 
 ---
 
@@ -112,19 +112,19 @@ Do **not** invent features; every doc change must match shipped specs and `specs
 
 ## Acceptance criteria
 
-- [ ] `TODO.md`: stated **done** count equals **number of directories** in `specs/done/` (25 at time of verification); comma-separated list is a **permutation** of that directory set (no omissions, no extras).  
-- [ ] `docs/prd/backlog.md`: items confirmed shipped in repo are **not** presented as unfinished v2-only work; each has a **working** relative link to `specs/done/<id>/plan.md` or team-chosen `spec.md`.  
-- [ ] `docs/prd.md` §2: no contradiction where stuck VM, orphan bulk, domain XML are simultaneously “v2 backlog-only” and implemented.  
-- [ ] `Continue_TODO_Prompt.md`: no instructions that reference a non-KUI PRD or game mechanics.  
-- [ ] Dashboard sweep: documented patterns re-grepped; fixes applied or explicitly out-of-scope with reason.  
-- [ ] If `make specs-list` exists: its output matches `ls -1 specs/done \| sort`.
+- [x] `TODO.md`: stated **done** count equals **number of directories** in `specs/done/` (25 at time of verification); comma-separated list is a **permutation** of that directory set (no omissions, no extras).  
+- [x] `docs/prd/backlog.md`: items confirmed shipped in repo are **not** presented as unfinished v2-only work; each has a **working** relative link to `specs/done/<id>/plan.md` or team-chosen `spec.md`.  
+- [x] `docs/prd.md` §2: no contradiction where stuck VM, orphan bulk, domain XML are simultaneously “v2 backlog-only” and implemented.  
+- [x] `Continue_TODO_Prompt.md`: no instructions that reference a non-KUI PRD or game mechanics.  
+- [x] Dashboard sweep: documented patterns re-grepped; fixes applied or explicitly out-of-scope with reason.  
+- [x] If `make specs-list` exists: its output matches `ls -1 specs/done \| sort`.
 
 ---
 
 ## Verification
 
 - **Default:** `make all` — expected **unchanged** outcome if only markdown edits (and optional Makefile one-liner).  
-- **If Makefile gains `specs-list`:** run `make specs-list` and compare to `ls -1 specs/done \| sort` (human or `diff`).  
+- **`specs-list`:** `make specs-list` prints sorted basenames of `specs/done` (same as `ls -1 specs/done | sort`); use `diff <(ls -1 specs/done | sort) <(make -s specs-list)` to confirm.  
 - **Do not** execute built binaries per project workflow; doc/link checks are manual or script-assisted.
 
 ---
@@ -148,6 +148,8 @@ None beyond merging doc changes. Optional: mention `make specs-list` in `TODO.md
 | Date | Change |
 |------|--------|
 | 2026-03-19 | Initial plan from repo verification (25 done specs; TODO 18; backlog/PRD stale v2; Continue_TODO_Prompt wrong project). |
+| 2026-03-23 | Implementation: `make specs-list` added to Makefile (sorted `specs/done` basenames); TODO.md, backlog, PRD §2/§4, Continue_TODO_Prompt reconciled to 25 done specs and shipped v2 items. |
+| 2026-03-23 | Task 7 verification: acceptance criteria met; `make specs-list` verified; `make all` blocked on agents without libvirt `.pc` (environmental). TODO.md last ID line: no period glued to basename. |
 
 ---
 

@@ -17,7 +17,7 @@ KUI (KVM User Interface) is a web-based interface for users who prefer a UI over
 - Console proxy design — prefer URL-based (wss://kui/...); proxy implementation may be required; needs exploration in spec.
 - Session/token storage — research OAuth 2.1 OIDC/SSO standards for Authentik; follow token storage standards (Credential API, etc.). Defer exact mechanism to spec.
 - Audit git storage — MVP from day one; git for diffs per entity changeset; exact structure in spec.
-Resolved (decision-log): VM list/console UX (Winbox.js Canvas). Phase 15: config path (/etc/kui/config.yaml), first-run (config/DB missing or write access), setup wizard (writes YAML, user restarts, KUI drops write access), console selection (per-VM preference + libvirt fallback), clone (automatic; stream-only OK for MVP), template from VM (domain XML + source disk ref), pool validation (libvirt API preferred). Maintenance/recovery: KUI maintenance mode (defer to spec), degraded (host-offline covers it), KUI recovery (v3 backup/restore); VM stuck detection + escalating recovery, orphan bulk + conflict resolution, domain XML edit — all v2 (decision-log §0 A15–A22, §2, §4).
+Resolved (decision-log): VM list/console UX (Winbox.js Canvas). Phase 15: config path (/etc/kui/config.yaml), first-run (config/DB missing or write access), setup wizard (writes YAML, user restarts, KUI drops write access), console selection (per-VM preference + libvirt fallback), clone (automatic; stream-only OK for MVP), template from VM (domain XML + source disk ref), pool validation (libvirt API preferred). **Shipped** (see [backlog](prd/backlog.md) “Completed”): keyboard shortcuts ([feat-keyboard-shortcuts](../specs/done/feat-keyboard-shortcuts/plan.md)), WCAG-oriented a11y ([feat-a11y](../specs/done/feat-a11y/plan.md)), stuck VM detection and recovery ([feat-stuck-vm](../specs/done/feat-stuck-vm/plan.md)), orphan bulk claim and conflict resolution ([feat-orphan-bulk](../specs/done/feat-orphan-bulk/plan.md)), domain XML edit for VM repair ([feat-domain-xml-edit](../specs/done/feat-domain-xml-edit/plan.md)). **Still open / deferred:** KUI maintenance mode (defer to spec), degraded (host-offline covers it), KUI recovery via v3 backup/restore (decision-log §0 A15–A22, §2, §4).
 
 ---
 
@@ -38,7 +38,7 @@ Resolved (decision-log): VM list/console UX (Winbox.js Canvas). Phase 15: config
 | [prd/decision-log.md](prd/decision-log.md) | §1 Formal decisions; §2 Canonical decisions; §3 Console protocol; §4 Inquisition findings |
 | [prd/architecture.md](prd/architecture.md) | §1 System overview; §2 Components; §3 Data flow; §4 Deployment |
 | [prd/stack.md](prd/stack.md) | §1 Backend; §2 Database; §3 Frontend; §4 Config |
-| [prd/backlog.md](prd/backlog.md) | v2/v3 prioritized backlog (shortcuts, a11y, stuck VM, orphan bulk, XML edit, backup) |
+| [prd/backlog.md](prd/backlog.md) | Completed v2-style enhancements (linked specs); v3 backup/import/export backlog |
 | [research/kui-libvirt-research.md](research/kui-libvirt-research.md) | Libvirt API, qemu+ssh, test driver, web UI comparison |
 | [research/winbox-ux-research.md](research/winbox-ux-research.md) | Winbox.js — Canvas engine for VM list/console |
 | [research/xyflow-canvas-ui-research.md](research/xyflow-canvas-ui-research.md) | xyflow deferred for topology/infrastructure maps (not Canvas) |

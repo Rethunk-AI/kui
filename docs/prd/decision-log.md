@@ -156,7 +156,7 @@ Binding technical decisions. Each topic appears once; later phases supersede ear
 
 | Topic | Finding |
 |-------|---------|
-| Accessibility | WCAG 2.1 AAA, v2 only |
+| Accessibility | WCAG 2.1 AAA target — **shipped** ([feat-a11y](../../specs/done/feat-a11y/plan.md)). Originally phased as v2. |
 | API formalization | Informal — code is the contract |
 | Audit retention | Unlimited OK for MVP |
 | Audit scope | Wizard completion, VM config changes, VM lifecycle, auth events |
@@ -184,7 +184,7 @@ Binding technical decisions. Each topic appears once; later phases supersede ear
 | Host offline | Show VMs from reachable hosts only; unreachable hosts as "offline" with error state. Real-time updates restore when available |
 | Import/claim flow | Claim = add to tracked list; host_id from host where orphan discovered |
 | Mobile support | No — desktop-first |
-| Keyboard shortcuts | v2 — see backlog.md |
+| Keyboard shortcuts | **Shipped** ([feat-keyboard-shortcuts](../../specs/done/feat-keyboard-shortcuts/plan.md)); see [backlog.md](backlog.md) Completed. |
 | Notifications | Toast for transient. MVP: alerts (host offline, clone/create failed, connection errors, VM state changes); in-memory only. Audit log v2 |
 | Next artifact | Full spec: schema, API, flows, deployment, component boundaries. Split into multiple specs (<800 lines or <10 tasks each) |
 | Orphan handling | Show all libvirt domains; offer to import/claim. host_id from discovery host |
@@ -220,6 +220,6 @@ Binding technical decisions. Each topic appears once; later phases supersede ear
 | KUI degraded | Host offline covers it |
 | KUI recovery | v3 backup/restore |
 | VM maintenance mode | v2 |
-| Stuck VM | Explicit detection (libvirt state) + escalating recovery (force stop → destroy → undefine). v2 |
-| Orphan bulk | Bulk claim + conflict resolution (name, UUID, host_id). v2 |
-| VM repair | Domain XML edit. v2. Full vs guided defer to spec |
+| Stuck VM | Explicit detection (libvirt state) + escalating recovery (force stop → destroy → undefine) — **shipped** ([feat-stuck-vm](../../specs/done/feat-stuck-vm/plan.md)). |
+| Orphan bulk | Bulk claim + conflict resolution (name, UUID, host_id) — **shipped** ([feat-orphan-bulk](../../specs/done/feat-orphan-bulk/plan.md)). |
+| VM repair | Domain XML edit — **shipped** ([feat-domain-xml-edit](../../specs/done/feat-domain-xml-edit/plan.md)). Full vs guided per spec. |

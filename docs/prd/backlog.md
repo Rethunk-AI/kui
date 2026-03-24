@@ -4,15 +4,25 @@ Prioritized post-MVP items. Core PRD: [prd.md](../prd.md). Decisions: [decision-
 
 ---
 
-## v2 — Enhancements (after core works)
+## Completed (see specs)
 
-| Priority | Item | Rationale |
-|----------|------|------------|
-| 1 | Keyboard shortcuts for power users | Polish after core flow works; Enter to open, Escape to close, shortcuts for common actions |
-| 2 | WCAG 2.1 AAA accessibility | Target full a11y compliance once functional UI is stable |
-| 3 | Stuck VM detection and recovery | Libvirt state only; escalating actions: force stop → force destroy → undefine |
-| 4 | Orphan bulk claim + conflict resolution | Bulk claim; resolve display name collision, UUID on multiple hosts, claimed-but-host_id-mismatch |
-| 5 | Domain XML edit for VM repair | Edit domain XML in UI to fix broken config or missing disk; full vs guided defer to spec |
+Former **v2 — Enhancements** items that are implemented; decision-log may still describe them historically as “v2.”
+
+| Item | Spec (plan) |
+|------|-------------|
+| Keyboard shortcuts for power users | [feat-keyboard-shortcuts](../../specs/done/feat-keyboard-shortcuts/plan.md) |
+| WCAG 2.1 AAA accessibility | [feat-a11y](../../specs/done/feat-a11y/plan.md) |
+| Stuck VM detection and recovery | [feat-stuck-vm](../../specs/done/feat-stuck-vm/plan.md) |
+| Orphan bulk claim + conflict resolution | [feat-orphan-bulk](../../specs/done/feat-orphan-bulk/plan.md) |
+| Domain XML edit for VM repair | [feat-domain-xml-edit](../../specs/done/feat-domain-xml-edit/plan.md) |
+
+**Gap closure** (cross-ref only; see [TODO.md](../../TODO.md) for full done-spec list):
+
+- [gap-audit](../../specs/done/gap-audit/plan.md) — umbrella gap closure (incl. later gap IDs per gap-audit narrative)
+- [gap-remediation](../../specs/done/gap-remediation/plan.md)
+- [gap-401-session-audit](../../specs/done/gap-401-session-audit/plan.md)
+- [gap-domain-xml-network](../../specs/done/gap-domain-xml-network/plan.md)
+- [gap-template-network](../../specs/done/gap-template-network/plan.md)
 
 ---
 

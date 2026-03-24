@@ -29,7 +29,7 @@ jwt_secret: "` + validJWTSecret + `"
 		t.Fatalf("write config: %v", err)
 	}
 
-	cfg, err := Load(configPath)
+	cfg, err := Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -63,6 +63,46 @@ jwt_secret: "` + validJWTSecret + `"
 	}
 }
 
+func TestLoad_PrefixNormalizesYAMLPathsUnderTempDir(t *testing.T) {
+	t.Parallel()
+	_ = os.Unsetenv("KUI_SECURE_COOKIES")
+
+	root := t.TempDir()
+	logical := "/etc/kui/config.yaml"
+	physical := filepath.Join(root, "etc", "kui", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(physical), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	configContent := []byte(`hosts:
+  - id: local
+    uri: qemu:///system
+db:
+  path: /var/lib/kui/kui.db
+git:
+  path: /var/lib/kui
+jwt_secret: "` + validJWTSecret + `"
+`)
+	if err := os.WriteFile(physical, configContent, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(logical, root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	wantDB := prefix.Resolve(root, "/var/lib/kui/kui.db")
+	wantGit := prefix.Resolve(root, "/var/lib/kui")
+	if cfg.DB.Path != wantDB {
+		t.Errorf("DB.Path = %q, want %q", cfg.DB.Path, wantDB)
+	}
+	if cfg.Git.Path != wantGit {
+		t.Errorf("Git.Path = %q, want %q", cfg.Git.Path, wantGit)
+	}
+	if rel, err := filepath.Rel(root, cfg.DB.Path); err != nil || strings.HasPrefix(rel, "..") {
+		t.Errorf("DB.Path %q is not under prefix %q (rel=%q, err=%v)", cfg.DB.Path, root, rel, err)
+	}
+}
+
 func TestLoadRejectsMissingHosts(t *testing.T) {
 	t.Parallel()
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
@@ -76,7 +116,7 @@ func TestLoadRejectsMissingHosts(t *testing.T) {
 		t.Fatalf("write config: %v", err)
 	}
 
-	if _, err := Load(configPath); err == nil {
+	if _, err := Load(configPath, ""); err == nil {
 		t.Fatal("expected missing hosts error")
 	}
 }
@@ -99,7 +139,7 @@ jwt_secret: "` + validJWTSecret + `"
 		t.Fatalf("write config: %v", err)
 	}
 
-	if _, err := Load(configPath); err == nil {
+	if _, err := Load(configPath, ""); err == nil {
 		t.Fatal("expected KUI_SECURE_COOKIES validation error")
 	}
 }
@@ -133,7 +173,7 @@ jwt_secret: "` + validJWTSecret + `"
 		t.Fatalf("write config: %v", err)
 	}
 
-	if _, err := Load(configPath); err == nil {
+	if _, err := Load(configPath, ""); err == nil {
 		t.Fatal("expected qemu+ssh keyfile validation error")
 	}
 }
@@ -157,7 +197,7 @@ jwt_secret: "` + validJWTSecret + `"
 		t.Fatalf("write config: %v", err)
 	}
 
-	if _, err := Load(configPath); err != nil {
+	if _, err := Load(configPath, ""); err != nil {
 		t.Fatalf("expected load to succeed: %v", err)
 	}
 }
@@ -182,7 +222,7 @@ jwt_secret: "` + validJWTSecret + `"
 		t.Fatalf("write config: %v", err)
 	}
 
-	if _, err := Load(configPath); err != nil {
+	if _, err := Load(configPath, ""); err != nil {
 		t.Fatalf("expected load to succeed with env keyfile: %v", err)
 	}
 }
@@ -205,7 +245,7 @@ jwt_secret: "` + validJWTSecret + `"
 		t.Fatalf("write config: %v", err)
 	}
 
-	if _, err := Load(configPath); err != nil {
+	if _, err := Load(configPath, ""); err != nil {
 		t.Fatalf("expected load to succeed with keyfile in URI: %v", err)
 	}
 }
@@ -214,7 +254,7 @@ func TestLoad_MissingFile(t *testing.T) {
 	t.Parallel()
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 
-	_, err := Load("/nonexistent/path/config.yaml")
+	_, err := Load("/nonexistent/path/config.yaml", "")
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
@@ -233,7 +273,7 @@ func TestLoad_InvalidYAML(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	_, err := Load(configPath)
+	_, err := Load(configPath, "")
 	if err == nil {
 		t.Fatal("expected unmarshal error")
 	}
@@ -259,7 +299,7 @@ jwt_secret: "` + validJWTSecret + `"
 		t.Fatalf("write: %v", err)
 	}
 
-	_, err := Load(configPath)
+	_, err := Load(configPath, "")
 	if err == nil {
 		t.Fatal("expected duration parse error")
 	}
@@ -359,7 +399,7 @@ jwt_secret: "short"
 			if err := os.WriteFile(configPath, []byte(tt.content), 0o600); err != nil {
 				t.Fatalf("write: %v", err)
 			}
-			_, err := Load(configPath)
+			_, err := Load(configPath, "")
 			if err == nil {
 				t.Fatal("expected validation error")
 			}
@@ -406,7 +446,7 @@ jwt_secret: "` + validJWTSecret + `"
 		t.Fatalf("write: %v", err)
 	}
 
-	cfg, err := Load(configPath)
+	cfg, err := Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -454,7 +494,7 @@ jwt_secret: "` + validJWTSecret + `"
 		t.Fatalf("write: %v", err)
 	}
 
-	_, err := Load(configPath)
+	_, err := Load(configPath, "")
 	if err == nil {
 		t.Fatal("expected KUI_SESSION_TIMEOUT error")
 	}
@@ -589,7 +629,7 @@ jwt_secret: "` + validJWTSecret + `"
 		t.Fatalf("write config: %v", err)
 	}
 
-	cfg, err := LoadWithOptions(logical, LoadOptions{BootstrapPrefix: root})
+	cfg, err := LoadWithOptions(logical, LoadOptions{Prefix: root})
 	if err != nil {
 		t.Fatalf("LoadWithOptions: %v", err)
 	}
@@ -627,7 +667,7 @@ jwt_secret: "` + validJWTSecret + `"
 		t.Fatalf("write config: %v", err)
 	}
 
-	cfg, err := LoadWithOptions(logical, LoadOptions{BootstrapPrefix: bootstrapRoot})
+	cfg, err := LoadWithOptions(logical, LoadOptions{Prefix: bootstrapRoot})
 	if err != nil {
 		t.Fatalf("LoadWithOptions: %v", err)
 	}
@@ -637,11 +677,11 @@ jwt_secret: "` + validJWTSecret + `"
 	}
 }
 
-func TestLoadWithOptions_YAMLRuntimePrefixNormalizesPaths(t *testing.T) {
+func TestLoadWithOptions_YAMLRuntimePrefixDoesNotAffectPaths(t *testing.T) {
 	t.Parallel()
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 
-	runtimeRoot := filepath.Join(t.TempDir(), "yaml-prefix-root")
+	runtimeRoot := filepath.Join(t.TempDir(), "yaml-prefix-ignored")
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	configContent := []byte(`runtime:
   prefix: "` + runtimeRoot + `"
@@ -662,13 +702,12 @@ jwt_secret: "` + validJWTSecret + `"
 	if err != nil {
 		t.Fatalf("LoadWithOptions: %v", err)
 	}
-	wantDB := prefix.Resolve(runtimeRoot, "/var/lib/kui/kui.db")
-	wantGit := prefix.Resolve(runtimeRoot, "/var/lib/kui")
-	if cfg.DB.Path != wantDB {
-		t.Errorf("DB.Path = %q, want %q", cfg.DB.Path, wantDB)
+	// Prefix is flag/env/load-options only; a runtime.prefix key in YAML is not applied.
+	if cfg.DB.Path != "/var/lib/kui/kui.db" {
+		t.Errorf("DB.Path = %q, want /var/lib/kui/kui.db", cfg.DB.Path)
 	}
-	if cfg.Git.Path != wantGit {
-		t.Errorf("Git.Path = %q, want %q", cfg.Git.Path, wantGit)
+	if cfg.Git.Path != "/var/lib/kui" {
+		t.Errorf("Git.Path = %q, want /var/lib/kui", cfg.Git.Path)
 	}
 }
 
@@ -796,7 +835,7 @@ jwt_secret: "` + validJWTSecret + `"
 		t.Fatalf("write config: %v", err)
 	}
 
-	cfg, err := LoadWithOptions(logical, LoadOptions{BootstrapPrefix: root})
+	cfg, err := LoadWithOptions(logical, LoadOptions{Prefix: root})
 	if err != nil {
 		t.Fatalf("LoadWithOptions: %v", err)
 	}

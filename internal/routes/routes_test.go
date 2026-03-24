@@ -267,7 +267,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -319,7 +319,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -380,7 +380,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -510,7 +510,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -621,7 +621,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -663,7 +663,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -721,7 +721,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -797,7 +797,7 @@ cors:
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -880,7 +880,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -962,7 +962,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -1012,7 +1012,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -1062,7 +1062,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -1112,7 +1112,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -1361,7 +1361,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -1580,7 +1580,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -1643,7 +1643,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -1695,7 +1695,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -1908,7 +1908,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -1990,7 +1990,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -2061,7 +2061,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -2348,7 +2348,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -2466,7 +2466,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -2770,7 +2770,7 @@ vm_defaults:
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -2841,7 +2841,7 @@ default_pool: default
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -2898,7 +2898,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -3008,7 +3008,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -3119,7 +3119,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -3178,7 +3178,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -3806,7 +3806,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -3859,7 +3859,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -3903,7 +3903,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -3968,7 +3968,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -4211,7 +4211,7 @@ git:
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -4270,7 +4270,7 @@ git:
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, err := config.Load(configPath)
+	loaded, err := config.Load(configPath, "")
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
@@ -4368,7 +4368,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -4426,7 +4426,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -4544,7 +4544,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -4612,7 +4612,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -4671,7 +4671,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -4751,7 +4751,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -4833,7 +4833,7 @@ default_host: local
 	if err := os.WriteFile(configPath, cfgYAML, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	loaded, _ := config.Load(configPath)
+	loaded, _ := config.Load(configPath, "")
 	database, _ := db.Open(filepath.Join(tempDir, "kui.db"))
 	t.Cleanup(func() { _ = database.Close() })
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)

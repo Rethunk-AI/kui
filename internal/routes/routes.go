@@ -62,7 +62,7 @@ type RouterOptions struct {
 	ConfigPresent bool
 	DBPath        string
 	GitPath       string
-	// PathPrefix is the effective runtime root for resolving KUI_WEB_DIR (bootstrap or YAML runtime.prefix).
+	// PathPrefix is the runtime filesystem root for resolving KUI_WEB_DIR (--prefix / KUI_PREFIX).
 	PathPrefix        string
 	Broadcaster       *broadcaster.Broadcaster
 	ConnectorProvider ConnectorProvider

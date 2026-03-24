@@ -220,7 +220,7 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 	var gitPath string
 
 	if configExists {
-		loaded, err := config.LoadWithOptions(candidateCfgPath, config.LoadOptions{BootstrapPrefix: bootstrap})
+		loaded, err := config.LoadWithOptions(candidateCfgPath, config.LoadOptions{Prefix: bootstrap})
 		if err != nil {
 			logger.Warn("config load failed, falling back to setup mode", "path", cfgPath, "err", err)
 			appConfig = nil
@@ -270,9 +270,6 @@ func buildApplication(opts startupOptions, logger *slog.Logger) (*application, e
 	}
 
 	webPathPrefix := bootstrap
-	if webPathPrefix == "" && appConfig != nil {
-		webPathPrefix = strings.TrimSpace(appConfig.Runtime.Prefix)
-	}
 	routerOpts := routes.RouterOptions{
 		Logger:        logger,
 		DB:            database,

@@ -74,13 +74,7 @@ type DB struct {
 	Path string `yaml:"path"`
 }
 
-// Runtime holds optional install/runtime settings from YAML.
-type Runtime struct {
-	Prefix string `yaml:"prefix"`
-}
-
 type Config struct {
-	Runtime             Runtime     `yaml:"runtime"`
 	Hosts               []Host      `yaml:"hosts"`
 	VMDefaults          VMDefaults  `yaml:"vm_defaults"`
 	DefaultHost         string      `yaml:"default_host"`
@@ -121,10 +115,14 @@ func (t *trackedString) Set(s string) error {
 	return nil
 }
 
-// LoadOptions configures [LoadWithOptions]. BootstrapPrefix re-roots the config file
-// path for reading and participates in effective prefix (it wins over YAML runtime.prefix).
+// LoadOptions configures [LoadWithOptions].
+// When Prefix is non-empty (after TrimSpace), the config file is read from
+// prefix.Resolve(Prefix, candidatePath) and every local filesystem path in the
+// loaded config is normalized under Prefix after env overrides.
+// Prefix comes from --prefix / KUI_PREFIX at startup, or from tests (e.g. t.TempDir());
+// YAML does not define a runtime prefix.
 type LoadOptions struct {
-	BootstrapPrefix string
+	Prefix string
 }
 
 func LoadWithArgs(args []string) (*Config, string, error) {
@@ -154,25 +152,26 @@ func LoadWithArgs(args []string) (*Config, string, error) {
 	}
 
 	readPath := resolvedConfigReadPath(configPath, bootstrap)
-	cfg, err := loadFromResolvedPath(readPath, LoadOptions{BootstrapPrefix: bootstrap})
+	cfg, err := loadFromResolvedPath(readPath, LoadOptions{Prefix: bootstrap})
 	if err != nil {
 		return nil, readPath, err
 	}
 	return cfg, readPath, nil
 }
 
-func Load(path string) (*Config, error) {
-	return LoadWithOptions(path, LoadOptions{})
+// Load loads YAML from candidate path. When prefix is non-empty, the file is read from
+// prefix.Resolve(prefix, candidate) and local path fields are normalized under prefix.
+func Load(path string, prefix string) (*Config, error) {
+	return LoadWithOptions(path, LoadOptions{Prefix: strings.TrimSpace(prefix)})
 }
 
-// LoadWithOptions loads YAML from path (candidate config path before bootstrap join).
-// When BootstrapPrefix is non-empty, the file is read from prefix.Resolve(bootstrap, candidate).
+// LoadWithOptions loads YAML from candidate path (before prefix join for the read path).
 func LoadWithOptions(path string, opts LoadOptions) (*Config, error) {
 	candidate := strings.TrimSpace(path)
 	if candidate == "" {
 		candidate = DefaultConfigPath
 	}
-	readPath := resolvedConfigReadPath(candidate, opts.BootstrapPrefix)
+	readPath := resolvedConfigReadPath(candidate, opts.Prefix)
 	return loadFromResolvedPath(readPath, opts)
 }
 
@@ -200,11 +199,7 @@ func loadFromResolvedPath(readPath string, opts LoadOptions) (*Config, error) {
 		return nil, err
 	}
 
-	effective := strings.TrimSpace(opts.BootstrapPrefix)
-	if effective == "" {
-		effective = strings.TrimSpace(cfg.Runtime.Prefix)
-	}
-	normalizeLocalPathFields(&cfg, effective)
+	normalizeLocalPathFields(&cfg, strings.TrimSpace(opts.Prefix))
 
 	if err := validate(cfg); err != nil {
 		return nil, err

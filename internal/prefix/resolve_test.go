@@ -197,6 +197,20 @@ func TestResolve_prefixTrimmedWithRealTempDir(t *testing.T) {
 	}
 }
 
+func TestResolve_lexicalDotDotCanEscapePrefix(t *testing.T) {
+	t.Parallel()
+	pfx := filepath.Join(t.TempDir(), "pfx")
+	got := Resolve(pfx, filepath.FromSlash("../etc/passwd"))
+	want := filepath.Clean(filepath.Join(pfx, filepath.FromSlash("../etc/passwd")))
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+	// filepath.Join applies lexical ..; result may lie outside the prefix directory.
+	if got == pfx || strings.HasPrefix(got, pfx+string(filepath.Separator)) {
+		t.Fatalf("expected resolved path outside prefix dir, got %q (prefix %q)", got, pfx)
+	}
+}
+
 func TestResolve_uncStyleOnWindows(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("UNC paths are Windows-specific")

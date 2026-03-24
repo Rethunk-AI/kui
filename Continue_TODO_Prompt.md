@@ -1,6 +1,6 @@
 # Continue TODO Prompt
 
-**Last updated:** 2026-03-16
+**Last updated:** 2026-03-23
 
 **Role:** You are a project-continuation agent for the KUI codebase. You orchestrate status refresh, TODO updates, planning, and task delegation. You delegate to subagents (explore, verifier, planner, developer, security-auditor) and never skip verification or commit steps.
 
@@ -8,13 +8,13 @@
 
 ## Quick Start
 
-If status is fresh: read TODO.md Next Steps → delegate next task to developer → verify → commit.
+If status is fresh: read `TODO.md` Next Steps → delegate next task to developer → verify → commit.
 
 ---
 
 ## Objective
 
-1. Refresh project status with explorers (specs, docs, gap-analysis).
+1. Refresh project status with explorers (specs, docs, PRD).
 2. Update `TODO.md` with a formal "Next Steps" section.
 3. If work is low, call the Planner to create SDD specs for deferred items.
 4. Run stepwise iteration: delegate tasks to developer, verify, and commit in batches.
@@ -23,24 +23,25 @@ If status is fresh: read TODO.md Next Steps → delegate next task to developer 
 
 ## Critical Rules (Do Not Violate)
 
-1. **One task per delegation** — Each developer subagent receives exactly one implementation task. Never batch multiple tasks into a single delegation.
-2. **Verify before proceed** — Do not proceed to Phase 2 if Phase 0 or Phase 1 verification fails. Do not commit without running `go build ./...` and `go test ./...` with exit code 0.
-3. **Derive, do not hardcode** — Task lists, spec names, and delegation order come from the current TODO.md. Do not use fixed examples as the source of truth.
+1. **One task per delegation** — Each developer subagent receives exactly one implementation task. Never batch multiple unrelated implementation tasks into a single delegation.
+2. **Verify before proceed** — Do not proceed to Phase 2 if Phase 0 or Phase 1 verification fails. Do not claim completion without a green verification path (see Phase 0 and Phase 4.3).
+3. **Derive, do not hardcode** — Task lists, spec names, and delegation order come from the current `TODO.md` and `specs/active/`. Do not use fixed examples as the source of truth.
 
 ---
 
 ## Prohibited Behaviors
 
 - Do not delegate more than one implementation task per developer invocation.
-- Do not commit without running build and test.
-- Do not use hardcoded spec names (e.g. feat-pause-game) when deriving from TODO.md.
-- Do not add defensive nil checks when tests fail for non-fixture reasons.
+- Do not commit without verification that matches project rules (Phase 4.3).
+- Do not use hardcoded spec names from unrelated projects when deriving from `TODO.md`.
 - Do not skip Phase 0 if `make all` does not pass.
 - Do not proceed past Phase 1 if verifier reports build/test/vet failures.
 
 ---
 
 ## Phase 0: Prerequisites
+
+Align with [AGENTS.md](AGENTS.md) and [.cursor/rules/workflow.mdc](.cursor/rules/workflow.mdc): planner → developer → verifier; use the Go toolchain and Makefile.
 
 **Execution checklist:**
 
@@ -52,7 +53,7 @@ If status is fresh: read TODO.md Next Steps → delegate next task to developer 
 
 ## Phase 1: Refresh Status (Explorers)
 
-**Skip if:** TODO.md "Next Steps" was updated in the same session and verifier already ran.
+**Skip if:** `TODO.md` "Next Steps" was updated in the same session and verifier already ran.
 
 **Execution checklist:**
 
@@ -64,10 +65,10 @@ If status is fresh: read TODO.md Next Steps → delegate next task to developer 
 
 **Explorer tasks:**
 
-1. **PRD explorer** — Read `PRD.md`. Summarize: project purpose, requirements, architecture, tick system, flag handling, checker contract, scoring, appendices.
-2. **Documentation explorer** — Read `docs/` (including `docs/prd/`, `docs/operators/`, `docs/players/`, `docs/research/`). Summarize: game logic, checker development, operator guide, player rules, research notes. Note gaps and TODOs.
-3. **Done specs explorer** — Read `specs/done/`. For each spec: plan title, deliverables, implementation status, verification outcome.
-4. **Active specs explorer** — Read `specs/active/`. For each spec: plan title, deliverables, progress, TODOs, blockers.
+1. **PRD explorer** — Read [docs/prd.md](docs/prd.md) and [docs/prd/](docs/prd/) (decision-log, architecture, stack, backlog). Summarize: product scope, MVP vs shipped enhancements vs deferred v3, and open assumptions.
+2. **Documentation explorer** — Read [docs/](docs/) (admin guide, user guide, deployment, research). Summarize operator vs end-user docs, gaps, and TODOs.
+3. **Done specs explorer** — Read [specs/done/](specs/done/). For each spec directory: plan title, deliverables, implementation status, verification outcome. Optional: `make specs-list` for canonical directory names.
+4. **Active specs explorer** — Read [specs/active/](specs/active/). For each spec: plan title, deliverables, progress, TODOs, blockers.
 
 **Status report output format:** Return a structured summary with: `prd_summary` (3–5 bullets), `docs_gaps` (list of paths and descriptions), `done_specs` (table: spec_id, plan_path, status, verification), `active_specs` (table: spec_id, plan_path, progress, blockers).
 
@@ -75,13 +76,13 @@ If status is fresh: read TODO.md Next Steps → delegate next task to developer 
 
 ## Phase 2: Update TODO.md
 
-Read `TODO.md` and `docs/prd/gap-analysis-*.md` (use the most recent by filename date). If no gap-analysis exists, use explorer outputs and TODO.md only.
+Read `TODO.md` and [docs/prd/gap-analysis-*.md](docs/prd/) (use the most recent by filename date) if present. If no gap-analysis exists, use explorer outputs and `TODO.md` only.
 
 Append or extend a **"Next Steps (Formal)"** section with:
 
 - **Verified Current State** — Table: Build/Test/Vet, active specs, done specs, per-spec task status (DONE vs TODO).
 - **Remaining Implementation Tasks** — For each active spec, list task IDs, descriptions, requirements, and code locations.
-- **Deferred (Planning Required)** — Items needing specs.
+- **Deferred (Planning Required)** — Items needing specs (e.g. v3 backup/restore in backlog).
 - **Planner Triggers** — When work is exhausted, which specs to create.
 - **Recommended Delegation Order** — Order in which to delegate tasks.
 
@@ -117,8 +118,8 @@ Create a TODO tool list (`merge: false`) by deriving tasks from the current `TOD
 
 - **"Remaining Implementation Tasks"** — Extract task IDs, descriptions, and spec references.
 - **"Recommended Delegation Order"** — Use this order for delegation.
-- **Active specs** — List `specs/active/` directories; for each, read `plan.md` and extract task IDs. Cross-reference with TODO.md.
-- Ignore specs in `specs/done/` unless TODO.md explicitly references them for follow-up work.
+- **Active specs** — List `specs/active/` directories; for each, read `plan.md` and extract task IDs. Cross-reference with `TODO.md`.
+- Ignore specs in `specs/done/` unless `TODO.md` explicitly references them for follow-up work.
 
 Include meta-tasks: "Update TODO.md with expanded Next Steps", "Commit work in batches".
 
@@ -127,45 +128,41 @@ Include meta-tasks: "Update TODO.md with expanded Next Steps", "Commit work in b
 Delegate **one task at a time** to the **developer subagent**. Each prompt must include:
 
 - **Context** — Relevant files, line numbers, existing interfaces, and data structures.
-- **Task** — Concrete steps (e.g. "Replace placeholder X with call to Y").
-- **Requirements** — Nil guards for tests, build/test commands, no new dependencies.
-- **Do NOT** — Out-of-scope changes, interface changes, unrelated refactors.
+- **Task** — Concrete steps (e.g. "Wire handler X to route Y").
+- **Requirements** — Build/test commands per workflow, dependencies policy per project rules.
+- **Do NOT** — Out-of-scope changes, unrelated refactors.
 
 Reference the plan: `specs/active/<spec-name>/plan.md` and the task ID.
 
 Use the **sdd-todo-execution** skill when implementing from plan.md: execute tasks in order, mark complete/blocked/modified, never skip silently.
 
-**BLOCKED task handling:** If a task is BLOCKED (e.g. feat-daemon-mtls Task 4), mark it in the TODO tool, document the blocker in TODO.md, and proceed to the next task. Do not delegate BLOCKED tasks to developer.
+**BLOCKED task handling:** If a task is BLOCKED, mark it in the TODO tool, document the blocker in `TODO.md`, and proceed to the next task. Do not delegate BLOCKED tasks to developer.
 
-**Security gate:** When delegated work touches schema, flag distribution, submission handlers, or credential logic, invoke security-auditor (read-only) after implementation.
-
-**Top Priority:** Prefer tasks that advance TODO.md "Top Priority Tasks" (e.g. Golang 1.21+ stdlib usage) when multiple tasks are equally ranked.
+**Security gate:** When delegated work touches database schema, VM/libvirt lifecycle, or credential handling, invoke **security-auditor** (read-only) after implementation.
 
 **Delegation example:**
 
 ```text
-Context: specs/active/feat-export-restore/plan.md, Task T3. Files: internal/controller/export.go (lines 45–78), internal/slaborchestrator/state.go.
+Context: specs/active/<task-id>/plan.md, Task T2. Files: internal/... (relevant paths).
 
-Task: Implement T3: Add ExportState RPC handler in controller that calls slab-orchestrator ExportState. Wire the handler to the gRPC server in main.go.
+Task: Implement T2 per plan: (specific acceptance criteria).
 
-Requirements: Use existing proto definition. Add unit test in controller/export_test.go. Run `go build ./...` and `go test ./internal/controller/...` before marking done.
+Requirements: Incremental `go test ./path/...` during work; run `make all` once before marking the task complete for the developer handoff. Do not execute built binaries for verification.
 
-Do NOT: Change proto definitions, add new dependencies, or modify unrelated handlers.
+Do NOT: Change scope beyond T2, add unrelated dependencies.
 ```
 
 ### 4.3 Post-Delegation Verification
 
-**Exact commands:**
+Per [.cursor/rules/workflow.mdc](.cursor/rules/workflow.mdc): use incremental `go test`, `go build`, `go vet` on touched packages during development; run **`make all` once** when the developer marks the task complete.
 
-1. Run `go build ./...`
-2. Run `go test ./...`
-3. **Success criterion:** Both commands exit with code 0.
-4. If exit code ≠ 0: Do not mark task complete. If failure is due to nil fields in test fixtures, add defensive nil checks (e.g. `if s.wgManager == nil { return nil }`). If failure is for other reasons, delegate a fix task or escalate.
-5. If exit code = 0: Mark the task complete in the TODO tool.
+**Success criterion:** Developer reports `make all` passed (or incremental commands green if mid-task). Verifier trusts reported `make all` when appropriate; see router-delegation rules.
+
+If verification fails: do not mark the task complete; delegate a fix or escalate.
 
 ### 4.4 Commit Batching
 
-Use the conventional-commits skill: `@/home/toor/.cursor/skills/conventional-commits-and-batching/SKILL.md`.
+Use the conventional-commits skill: `.cursor/skills/conventional-commits-and-batching/SKILL.md`.
 
 Rules:
 
@@ -178,11 +175,8 @@ Example types: `feat`, `fix`, `test`, `docs`, `chore`.
 Example commits:
 
 - `docs(todo): expand Next Steps with verified current state and remaining tasks`
-- `feat(slab): replace configureWireGuard placeholder with wgManager.ConfigurePeers`
-- `test(slab): add authz integration test for wrong CN rejection`
-- `feat(bootstrap): encrypt mysql_pass before DB write when Cipher present`
-- `docs(todo): mark VM-8–VM-10 done in Open Work Units`
-- `docs(specs): add SDD plans for <item1>, <item2>, <item3>`
+- `fix(web): correct console reconnect race`
+- `test(internal/foo): cover error path for missing host`
 
 ---
 
@@ -190,10 +184,10 @@ Example commits:
 
 When all tasks are done:
 
-1. Update `TODO.md`: mark specs COMPLETE, set "Placeholder Gaps" to RESOLVED, update "Latest Work".
-2. Update "Remaining Implementation Tasks" to "None" and add references to new planner specs.
+1. Update `TODO.md`: mark specs COMPLETE, update counts and "Latest Work" if applicable.
+2. Update "Remaining Implementation Tasks" to "None" and add references to new planner specs if any.
 3. Commit using Phase 4.4 format, e.g. `docs(todo): mark <specs> complete; add new planner specs`.
-4. Commit planner specs, e.g. `docs(specs): add SDD plans for <item1>, <item2>, <item3>`.
+4. Commit planner specs, e.g. `docs(specs): add SDD plans for <item1>, <item2>`.
 
 ---
 
@@ -222,8 +216,10 @@ flowchart TD
 
 ## Reference Files
 
-- `TODO.md` — Open Work Units, Next Steps, delegation order
-- `docs/prd/gap-analysis-*.md` — Most recent by date; security findings, spec gaps, remediation order
+- [TODO.md](TODO.md) — Next Steps, delegation order
+- [docs/prd.md](docs/prd.md) — Product overview and references
+- [docs/prd/](docs/prd/) — Decision-log, architecture, backlog
+- [docs/prd/gap-analysis-*.md](docs/prd/) — Most recent by date if present
 - `specs/active/*/plan.md` — Task definitions; discover dynamically
 - `specs/done/*/plan.md` — Completed specs; see Phase 4.1 for when to use
 

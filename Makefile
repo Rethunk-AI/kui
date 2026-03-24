@@ -1,5 +1,9 @@
-.PHONY: all build test vet web web-a11y coverage coverage-report web-coverage
+.PHONY: all build test vet web web-a11y coverage coverage-report web-coverage specs-list
 all: web build test vet
+
+# Print sorted basenames of specs/done (canonical completed-spec inventory).
+specs-list:
+	@ls -1 specs/done | sort
 
 web:
 	cd web && corepack yarn install && corepack yarn run build

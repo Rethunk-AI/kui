@@ -4,7 +4,7 @@ This document covers TLS and reverse-proxy deployment for KUI. For systemd setup
 
 ## Relocatable / contained install (`--prefix`)
 
-KUI can run with a **runtime prefix** (`--prefix` or `KUI_PREFIX`, optionally `runtime.prefix` in YAML when flag/env are unset). All **local** paths KUI opens are resolved under that directory using a chroot-style rule (see [Contained / non-root mode](admin-guide.md#contained-non-root-mode-prefix) in the Admin Guide). This supports a **relocatable tree** (for example `/opt/kui-run/etc/kui`, `/opt/kui-run/var/lib/kui`) owned by a dedicated user without scattering state across the real `/etc` and `/var`.
+KUI can run with a **runtime prefix** (`--prefix` or `KUI_PREFIX`). All **local** paths KUI opens are resolved under that directory using a chroot-style rule (see [Contained / non-root mode](admin-guide.md#contained-non-root-mode-prefix) in the Admin Guide). This supports a **relocatable tree** (for example `/opt/kui-run/etc/kui`, `/opt/kui-run/var/lib/kui`) owned by a dedicated user without scattering state across the real `/etc` and `/var`.
 
 **Permissions:** The service user needs read/write access to the prefix tree (config, SQLite and WAL sidecars, git template directory, any TLS PEMs and optional `KUI_WEB_DIR`). Use `chown` / `chmod` (or ACLs) so only that user can read private keys and the database.
 

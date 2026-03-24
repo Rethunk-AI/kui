@@ -31,7 +31,7 @@ Minimal example:
 kui --prefix "$HOME/kui-root" --config /etc/kui/config.yaml --listen :8080
 ```
 
-Here the config file is loaded from `$HOME/kui-root/etc/kui/config.yaml`. Other absolute-style paths in config and env behave the same way. For a full layout, precedence (`--prefix` vs `KUI_PREFIX` vs optional YAML `runtime.prefix`), TLS/static assets, libvirt caveats, and a manual smoke checklist, see [Contained / non-root mode in the Admin Guide](docs/admin-guide.md#contained-non-root-mode-prefix).
+Here the config file is loaded from `$HOME/kui-root/etc/kui/config.yaml`. Other absolute-style paths in config and env behave the same way. For a full layout, precedence (`--prefix` vs `KUI_PREFIX`), TLS/static assets, libvirt caveats, and a manual smoke checklist, see [Contained / non-root mode in the Admin Guide](docs/admin-guide.md#contained-non-root-mode-prefix).
 
 ## Build
 

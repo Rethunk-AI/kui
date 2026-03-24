@@ -56,7 +56,7 @@ Config is written by the setup wizard. Full YAML structure and env overrides are
 
 ## Contained / non-root mode (`--prefix`)
 
-KUI supports a **runtime prefix**: `--prefix` on the CLI or the `KUI_PREFIX` environment variable, and optionally `runtime.prefix` in YAML. When the effective prefix is non-empty, the process resolves **local** filesystem paths as if that directory were `/` (chroot-style **re-rooting**, not a real `chroot(2)`). A path like `/var/lib/kui/kui.db` opens as `{prefix}/var/lib/kui/kui.db`. This is useful for non-root installs, relocatable trees, and tests without writing under the real FHS.
+KUI supports a **runtime prefix**: `--prefix` on the CLI or the `KUI_PREFIX` environment variable. Unknown keys in YAML are ignored, so a `runtime:` block (for example `runtime.prefix`) is **not** read for prefix—use the flag or env. When the effective prefix is non-empty, the process resolves **local** filesystem paths as if that directory were `/` (chroot-style **re-rooting**, not a real `chroot(2)`). A path like `/var/lib/kui/kui.db` opens as `{prefix}/var/lib/kui/kui.db`. This is useful for non-root installs, relocatable trees, and tests without writing under the real FHS.
 
 Paths that are **not** re-rooted include libvirt URIs, pool **names** (non-path strings), JWT/session settings, and host discovery paths used by KVM checks (for example `/dev/kvm`, `/etc/os-release`).
 
@@ -78,7 +78,7 @@ Place `config.yaml` under `{prefix}/etc/kui/` when using logical path `/etc/kui/
 Use normal absolute-looking strings in YAML; with a prefix set, they refer to **locations under the prefix**, not the host root:
 
 ```yaml
-# Optional (lowest precedence vs --prefix / KUI_PREFIX); omit in most deployments:
+# Ignored for prefix (use --prefix / KUI_PREFIX instead):
 # runtime:
 #   prefix: /opt/kui-run
 
@@ -106,7 +106,8 @@ On disk with `PREFIX=/opt/kui-run`, the DB file above is opened at `/opt/kui-run
 
 1. **`--prefix`** — if you pass this flag, it wins.
 2. **`KUI_PREFIX`** — used when the `--prefix` flag was not set on the command line.
-3. **`runtime.prefix` in YAML** — used only when neither `--prefix` nor `KUI_PREFIX` supplies a non-empty value after trimming. It applies after the config file is loaded, so it does not change which path was used to **find** that file; use the flag or env when you want the config file itself to be read from under a prefix tree.
+
+There is no YAML field for prefix: values under `runtime:` (or similar) in config are not applied. Tests may set an equivalent via `LoadOptions.Prefix`.
 
 The bootstrap prefix (`--prefix` / `KUI_PREFIX`) is also used to resolve the **config path** before reading (for example `--prefix /tmp/r --config /etc/kui/config.yaml` reads `/tmp/r/etc/kui/config.yaml`).
 
@@ -115,11 +116,11 @@ The bootstrap prefix (`--prefix` / `KUI_PREFIX`) is also used to resolve the **c
 When a non-empty effective prefix is in use:
 
 - **`--tls-cert`** and **`--tls-key`** are resolved under the prefix the same way as other filesystem paths (for example logical `/etc/kui/tls/cert.pem` → `{prefix}/etc/kui/tls/cert.pem`).
-- **`KUI_WEB_DIR`**, when set, is resolved under the effective prefix used for static files (bootstrap prefix from flag/env, or `runtime.prefix` from YAML when the bootstrap prefix is empty).
+- **`KUI_WEB_DIR`**, when set, is resolved under the effective prefix from `--prefix` / `KUI_PREFIX` (same as other local paths).
 
 ### When not to use a prefix
 
-Use **empty prefix** (omit `--prefix`, `KUI_PREFIX`, and YAML `runtime.prefix`) when:
+Use **empty prefix** (omit `--prefix` and `KUI_PREFIX`) when:
 
 - KUI should use **real host paths** for SQLite, git data, TLS material, and pool directories—typical **system libvirt** deployments on FHS (`/var/lib/libvirt/images`, `/var/lib/kui`, `/etc/kui`, …).
 - You expect logical `/var/...` paths in config to mean the **actual** host filesystem. With a prefix set, default pool path probes (for example under `/var/lib/libvirt/images`) are evaluated under the prefix; **libvirt on the host** still uses host paths unless you mirror layout under the prefix, use bind mounts, or align pool configuration explicitly.

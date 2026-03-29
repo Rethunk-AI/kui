@@ -13,22 +13,23 @@
     "a11y:check": "yarn run build && yarn run a11y:ci"
   },
   "dependencies": {
-    "@novnc/novnc": "^1.4.0",
-    "@xterm/addon-fit": "^0.10.0",
-    "@xterm/xterm": "^5.5.0",
-    "winbox": "^0.2.2"
+    "@novnc/novnc": "^1.6.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "winbox": "0.2.82"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^2.1.8",
-    "autoprefixer": "^10.4.20",
-    "happy-dom": "^20.8.4",
+    "@tailwindcss/postcss": "^4.2.2",
+    "@vitest/coverage-v8": "^4.1.2",
+    "autoprefixer": "^10.4.27",
+    "happy-dom": "^20.8.9",
     "pa11y": "^9.1.1",
-    "postcss": "^8.4.49",
-    "start-server-and-test": "^2.1.5",
-    "tailwindcss": "^3.4.16",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.3",
-    "vitest": "^2.1.8"
+    "postcss": "^8.5.8",
+    "start-server-and-test": "^3.0.0",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3",
+    "vitest": "^4.1.2"
   },
   "packageManager": "yarn@4.13.0"
 }

@@ -7,14 +7,16 @@ const mockInstance = {
   window: null as HTMLElement | null,
 };
 
+function WinBoxMock(_title: string, _opts: unknown) {
+  mockInstance.window = document.createElement("div");
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "wb-close";
+  mockInstance.window.appendChild(closeBtn);
+  return mockInstance;
+}
+
 vi.mock("winbox/src/js/winbox.js", () => ({
-  default: vi.fn().mockImplementation(() => {
-    mockInstance.window = document.createElement("div");
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "wb-close";
-    mockInstance.window.appendChild(closeBtn);
-    return mockInstance;
-  }),
+  default: vi.fn(WinBoxMock),
 }));
 
 describe("winbox-adapter", () => {

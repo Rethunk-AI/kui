@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { registerShortcuts } from "./shortcuts";
+import { registerShortcuts, type ShortcutContext } from "./shortcuts";
 import type { VM } from "./api";
 
 function keydown(opts: {
@@ -57,7 +57,7 @@ describe("shortcuts", () => {
       getHasSelection: vi.fn(() => false),
       getSelectedVM: vi.fn(() => null),
     };
-    unregister = registerShortcuts(ctx);
+    unregister = registerShortcuts(ctx as ShortcutContext);
   });
 
   afterEach(() => {
@@ -181,7 +181,7 @@ describe("shortcuts", () => {
     const ctxNoHelp = { ...ctx };
     delete ctxNoHelp.onShowHelp;
     unregister();
-    unregister = registerShortcuts(ctxNoHelp);
+    unregister = registerShortcuts(ctxNoHelp as ShortcutContext);
     const ev = keydown({ key: "?" });
     document.dispatchEvent(ev);
     expect(() => {}).not.toThrow();

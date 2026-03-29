@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 /* KUI global shell tokens — Shadcn-compatible + WCAG 2.1 AAA */
 :root {

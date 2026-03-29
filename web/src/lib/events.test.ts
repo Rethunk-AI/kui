@@ -29,7 +29,13 @@ describe("events", () => {
       onerror: null,
       close: vi.fn(),
     };
-    EventSourceCtor = vi.fn(() => mockEventSource);
+    function EventSourceMock(
+      _url: string,
+      _opts?: { withCredentials?: boolean }
+    ) {
+      return mockEventSource;
+    }
+    EventSourceCtor = vi.fn(EventSourceMock);
     vi.stubGlobal("EventSource", EventSourceCtor);
   });
 

@@ -1,5 +1,5 @@
 # GitLab CI — mirrors .github/workflows/ci.yml
-# Go 1.23, build/test/vet/lint/coverage
+# Go version must match go.mod (see GO_VERSION below).
 
 stages:
   - build
@@ -7,7 +7,7 @@ stages:
   - lint
 
 variables:
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.25"
 
 .build: &build
   image: golang:${GO_VERSION}
@@ -33,8 +33,12 @@ vet:
     - go vet ./...
 
 lint:
-  image: golangci/golangci-lint:v2.4-alpine
+  image: golang:${GO_VERSION}
   stage: lint
+  before_script:
+    - go version
+    - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.4.0
+    - export PATH="$(go env GOPATH)/bin:$PATH"
   script:
     - golangci-lint run ./...
 

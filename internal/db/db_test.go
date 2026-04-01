@@ -59,7 +59,7 @@ func TestOpenAppliesSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query sqlite_master: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	observed := map[string]struct{}{}
 	for rows.Next() {
@@ -116,7 +116,7 @@ func TestVMMetadata_CRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	// Insert
 	if err := database.InsertVMMetadata(ctx, "h1", "uuid1", false, nil); err != nil {
@@ -242,7 +242,7 @@ func TestInsertVMMetadata_Duplicate_Error(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	if err := database.InsertVMMetadata(ctx, "h1", "uuid1", false, nil); err != nil {
 		t.Fatalf("first insert: %v", err)

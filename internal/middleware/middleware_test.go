@@ -121,9 +121,8 @@ func TestCORS_OPTIONS_Returns204(t *testing.T) {
 }
 
 func TestLogging_CapturesStatus(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	var buf bytes.Buffer
-	logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{}))
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{}))
 
 	h := chain(RequestID(), Logging(logger))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

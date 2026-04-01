@@ -64,7 +64,7 @@ git:
 	if err != nil {
 		t.Fatalf("GET / failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("unexpected status: %d", resp.StatusCode)
 	}
@@ -108,7 +108,7 @@ func TestSetupMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /api/setup/status failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("unexpected status: %d", resp.StatusCode)
@@ -176,7 +176,7 @@ jwt_secret: "0123456789abcdef0123456789abcdef"
 	if err != nil {
 		t.Fatalf("GET /api/setup/status failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("unexpected status: %d", resp.StatusCode)
@@ -203,9 +203,9 @@ func TestSetupCompleteIdempotent(t *testing.T) {
 	dbPath := filepath.Join(tempDir, "idempotent.db")
 	configPath := filepath.Join(tempDir, "config.yaml")
 	t.Cleanup(func() {
-		os.Unsetenv("KUI_DB_PATH")
-		os.Unsetenv("KUI_GIT_PATH")
-		os.Unsetenv("KUI_TEST_SETUP_MOCK")
+		_ = os.Unsetenv("KUI_DB_PATH")
+		_ = os.Unsetenv("KUI_GIT_PATH")
+		_ = os.Unsetenv("KUI_TEST_SETUP_MOCK")
 	})
 	_ = os.Setenv("KUI_DB_PATH", dbPath)
 	_ = os.Setenv("KUI_GIT_PATH", tempDir)
@@ -239,7 +239,7 @@ func TestSetupCompleteIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first setup/complete: %v", err)
 	}
-	resp1.Body.Close()
+	_ = resp1.Body.Close()
 	if resp1.StatusCode != http.StatusCreated {
 		t.Fatalf("first setup/complete: expected 201, got %d", resp1.StatusCode)
 	}
@@ -252,7 +252,7 @@ func TestSetupCompleteIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second setup/complete: %v", err)
 	}
-	resp2.Body.Close()
+	_ = resp2.Body.Close()
 	if resp2.StatusCode != http.StatusConflict {
 		t.Fatalf("second setup/complete: expected 409 Conflict, got %d", resp2.StatusCode)
 	}
@@ -347,8 +347,8 @@ func TestParseFlags_TLSPairRequired(t *testing.T) {
 
 func TestParseFlags_EnvOverrides(t *testing.T) {
 	t.Cleanup(func() {
-		os.Unsetenv("KUI_CONFIG")
-		os.Unsetenv("KUI_LISTEN")
+		_ = os.Unsetenv("KUI_CONFIG")
+		_ = os.Unsetenv("KUI_LISTEN")
 	})
 
 	tempDir := t.TempDir()
@@ -362,8 +362,8 @@ jwt_secret: "0123456789abcdef0123456789abcdef"
 		t.Fatalf("write config: %v", err)
 	}
 
-	os.Setenv("KUI_CONFIG", configPath)
-	os.Setenv("KUI_LISTEN", "127.0.0.1:0")
+	_ = os.Setenv("KUI_CONFIG", configPath)
+	_ = os.Setenv("KUI_LISTEN", "127.0.0.1:0")
 
 	opts, err := parseFlags([]string{})
 	if err != nil {
@@ -382,7 +382,7 @@ jwt_secret: "0123456789abcdef0123456789abcdef"
 
 func TestParseFlags_ConfigFlagOverridesEnv(t *testing.T) {
 	t.Cleanup(func() {
-		os.Unsetenv("KUI_CONFIG")
+		_ = os.Unsetenv("KUI_CONFIG")
 	})
 
 	tempDir := t.TempDir()
@@ -395,7 +395,7 @@ jwt_secret: "0123456789abcdef0123456789abcdef"
 	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	os.Setenv("KUI_CONFIG", "/other/path")
+	_ = os.Setenv("KUI_CONFIG", "/other/path")
 
 	opts, err := parseFlags([]string{"--config", configPath, "--listen", "127.0.0.1:0"})
 	if err != nil {
@@ -410,11 +410,11 @@ jwt_secret: "0123456789abcdef0123456789abcdef"
 }
 
 func TestBuildApplication_DBOpenFailureInSetupMode(t *testing.T) {
-	t.Cleanup(func() { os.Unsetenv("KUI_DB_PATH") })
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_DB_PATH") })
 
 	// Use a path that is a directory (not a file) - sqlite Open will fail
 	tempDir := t.TempDir()
-	os.Setenv("KUI_DB_PATH", tempDir)
+	_ = os.Setenv("KUI_DB_PATH", tempDir)
 
 	opts, err := parseFlags([]string{"--config", filepath.Join(tempDir, "nonexistent.yaml"), "--listen", "127.0.0.1:0"})
 	if err != nil {
@@ -449,7 +449,7 @@ func TestGetFileStatError(t *testing.T) {
 }
 
 func TestBuildApplication_ConfigPathStatError(t *testing.T) {
-	t.Cleanup(func() { os.Unsetenv("KUI_DB_PATH") })
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_DB_PATH") })
 
 	// Use a path that causes stat to fail with non-ErrNotExist (e.g. permission denied)
 	tempDir := t.TempDir()
@@ -460,7 +460,7 @@ func TestBuildApplication_ConfigPathStatError(t *testing.T) {
 	if err := os.Chmod(restrictedDir, 0o000); err != nil {
 		t.Skip("chmod 000 not supported or not effective")
 	}
-	defer os.Chmod(restrictedDir, 0o700)
+	defer func() { _ = os.Chmod(restrictedDir, 0o700) }()
 
 	cfgPath := filepath.Join(restrictedDir, "config.yaml")
 	opts, err := parseFlags([]string{"--config", cfgPath, "--listen", "127.0.0.1:0"})
@@ -478,7 +478,7 @@ func TestBuildApplication_ConfigPathStatError(t *testing.T) {
 }
 
 func TestBuildApplication_GitInitFailure(t *testing.T) {
-	t.Cleanup(func() { os.Unsetenv("KUI_DB_PATH") })
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_DB_PATH") })
 
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "kui.db")
@@ -574,8 +574,8 @@ func TestStartServer_TLS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseFlags: %v", err)
 	}
-	os.Setenv("KUI_DB_PATH", filepath.Join(tempDir, "kui.db"))
-	t.Cleanup(func() { os.Unsetenv("KUI_DB_PATH") })
+	_ = os.Setenv("KUI_DB_PATH", filepath.Join(tempDir, "kui.db"))
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_DB_PATH") })
 
 	app, err := buildApplication(opts, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
@@ -597,7 +597,7 @@ func TestStartServer_TLS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET https: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
@@ -641,8 +641,8 @@ func TestStartServer_TLSUnderPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseFlags: %v", err)
 	}
-	os.Setenv("KUI_DB_PATH", filepath.Join(root, "var", "lib", "kui", "tls.db"))
-	t.Cleanup(func() { os.Unsetenv("KUI_DB_PATH") })
+	_ = os.Setenv("KUI_DB_PATH", filepath.Join(root, "var", "lib", "kui", "tls.db"))
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_DB_PATH") })
 	if err := os.MkdirAll(filepath.Dir(os.Getenv("KUI_DB_PATH")), 0o755); err != nil {
 		t.Fatalf("mkdir db parent: %v", err)
 	}
@@ -671,14 +671,14 @@ func TestStartServer_TLSUnderPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET https: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
 }
 
 func TestParseFlags_PrefixFromEnvWhenFlagUnset(t *testing.T) {
-	t.Cleanup(func() { os.Unsetenv("KUI_PREFIX") })
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_PREFIX") })
 	if err := os.Setenv("KUI_PREFIX", "/from/env"); err != nil {
 		t.Fatalf("setenv: %v", err)
 	}
@@ -692,7 +692,7 @@ func TestParseFlags_PrefixFromEnvWhenFlagUnset(t *testing.T) {
 }
 
 func TestParseFlags_PrefixFlagOverridesEnv(t *testing.T) {
-	t.Cleanup(func() { os.Unsetenv("KUI_PREFIX") })
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_PREFIX") })
 	if err := os.Setenv("KUI_PREFIX", "/from/env"); err != nil {
 		t.Fatalf("setenv: %v", err)
 	}
@@ -754,7 +754,7 @@ func TestBuildApplication_InvalidPrefixNotDirectory(t *testing.T) {
 }
 
 func TestBuildApplication_BootstrapPrefixResolvesSetupDBPath(t *testing.T) {
-	t.Cleanup(func() { os.Unsetenv("KUI_DB_PATH") })
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_DB_PATH") })
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "var", "lib", "kui"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -942,7 +942,7 @@ git:
 	if err != nil {
 		t.Fatalf("GET /: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -992,7 +992,7 @@ func TestBuildApplication_KUI_WEB_DIRResolvedUnderPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}

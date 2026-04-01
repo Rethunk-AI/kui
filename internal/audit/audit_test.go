@@ -19,7 +19,7 @@ func TestRecordEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	err = RecordEvent(ctx, database, Event{
 		EventType:  "auth",
@@ -59,7 +59,7 @@ func TestRecordEventWithDiff(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	diffPath := "audit/wizard/20260102T150405Z.diff"
 	diffContent := WizardDiff("hosts:\n  - id: local\n")
@@ -147,7 +147,7 @@ func TestRecordEventWithDiff_EmptyGitPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	err = RecordEventWithDiff(ctx, database, "", Event{
 		EventType:  "wizard_complete",
@@ -176,7 +176,7 @@ func TestRecordEventWithDiff_OpenOrInitRepo_ExistingRepo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	// First call creates repo via openOrInitRepo (init path)
 	diffPath := "audit/wizard/20260102T150405Z.diff"
@@ -253,7 +253,7 @@ func TestRecordEvent_WithUserID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	// Create user for foreign key
 	now := "2026-03-16T00:00:00Z"

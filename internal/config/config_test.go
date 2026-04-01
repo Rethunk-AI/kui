@@ -123,7 +123,7 @@ func TestLoadRejectsMissingHosts(t *testing.T) {
 
 func TestLoadRejectsMalformedKUI_SECURE_COOKIES(t *testing.T) {
 	// Do not run in parallel: env var affects other tests
-	t.Cleanup(func() { os.Unsetenv("KUI_SECURE_COOKIES") })
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_SECURE_COOKIES") })
 	if err := os.Setenv("KUI_SECURE_COOKIES", "invalid"); err != nil {
 		t.Fatalf("setenv: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestHostKeyfileEnvVarUsesKUI_HOST_Prefix(t *testing.T) {
 
 func TestLoadRejectsQemuSSHWithoutKeyfile(t *testing.T) {
 	// Do not run in parallel: env var affects other tests
-	t.Cleanup(func() { os.Unsetenv("KUI_HOST_REMOTE_KEYFILE") })
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_HOST_REMOTE_KEYFILE") })
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 	_ = os.Unsetenv("KUI_HOST_REMOTE_KEYFILE")
 
@@ -180,7 +180,7 @@ jwt_secret: "` + validJWTSecret + `"
 
 func TestLoadAcceptsQemuSSHWithKeyfileInConfig(t *testing.T) {
 	// Do not run in parallel: env var affects other tests
-	t.Cleanup(func() { os.Unsetenv("KUI_HOST_REMOTE_KEYFILE") })
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_HOST_REMOTE_KEYFILE") })
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 	_ = os.Unsetenv("KUI_HOST_REMOTE_KEYFILE")
 
@@ -204,7 +204,7 @@ jwt_secret: "` + validJWTSecret + `"
 
 func TestLoadAcceptsQemuSSHWithKeyfileInEnv(t *testing.T) {
 	// Do not run in parallel: env var affects other tests
-	t.Cleanup(func() { os.Unsetenv("KUI_HOST_REMOTE_KEYFILE") })
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_HOST_REMOTE_KEYFILE") })
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 	if err := os.Setenv("KUI_HOST_REMOTE_KEYFILE", "/env/key"); err != nil {
 		t.Fatalf("setenv: %v", err)
@@ -229,7 +229,7 @@ jwt_secret: "` + validJWTSecret + `"
 
 func TestLoadAcceptsQemuSSHWithKeyfileInURI(t *testing.T) {
 	// Do not run in parallel: env var affects other tests
-	t.Cleanup(func() { os.Unsetenv("KUI_HOST_REMOTE_KEYFILE") })
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_HOST_REMOTE_KEYFILE") })
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 	_ = os.Unsetenv("KUI_HOST_REMOTE_KEYFILE")
 
@@ -413,25 +413,25 @@ jwt_secret: "short"
 func TestLoad_ApplyEnvOverrides(t *testing.T) {
 	// Do not run in parallel: env vars affect other tests
 	t.Cleanup(func() {
-		os.Unsetenv("KUI_DB_PATH")
-		os.Unsetenv("KUI_GIT_PATH")
-		os.Unsetenv("KUI_DEFAULT_HOST")
-		os.Unsetenv("KUI_DEFAULT_POOL")
-		os.Unsetenv("KUI_SESSION_TIMEOUT")
-		os.Unsetenv("KUI_JWT_SECRET")
-		os.Unsetenv("KUI_CORS_ORIGINS")
-		os.Unsetenv("KUI_SECURE_COOKIES")
+		_ = os.Unsetenv("KUI_DB_PATH")
+		_ = os.Unsetenv("KUI_GIT_PATH")
+		_ = os.Unsetenv("KUI_DEFAULT_HOST")
+		_ = os.Unsetenv("KUI_DEFAULT_POOL")
+		_ = os.Unsetenv("KUI_SESSION_TIMEOUT")
+		_ = os.Unsetenv("KUI_JWT_SECRET")
+		_ = os.Unsetenv("KUI_CORS_ORIGINS")
+		_ = os.Unsetenv("KUI_SECURE_COOKIES")
 	})
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 
-	os.Setenv("KUI_DB_PATH", "/custom/db/path")
-	os.Setenv("KUI_GIT_PATH", "/custom/git/path")
-	os.Setenv("KUI_DEFAULT_HOST", "remote")
-	os.Setenv("KUI_DEFAULT_POOL", "default")
-	os.Setenv("KUI_SESSION_TIMEOUT", "1h")
-	os.Setenv("KUI_JWT_SECRET", "0123456789abcdef0123456789abcdef01234567")
-	os.Setenv("KUI_CORS_ORIGINS", "https://a.example.com, https://b.example.com")
-	os.Setenv("KUI_SECURE_COOKIES", "false")
+	_ = os.Setenv("KUI_DB_PATH", "/custom/db/path")
+	_ = os.Setenv("KUI_GIT_PATH", "/custom/git/path")
+	_ = os.Setenv("KUI_DEFAULT_HOST", "remote")
+	_ = os.Setenv("KUI_DEFAULT_POOL", "default")
+	_ = os.Setenv("KUI_SESSION_TIMEOUT", "1h")
+	_ = os.Setenv("KUI_JWT_SECRET", "0123456789abcdef0123456789abcdef01234567")
+	_ = os.Setenv("KUI_CORS_ORIGINS", "https://a.example.com, https://b.example.com")
+	_ = os.Setenv("KUI_SECURE_COOKIES", "false")
 
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config.yaml")
@@ -479,9 +479,9 @@ jwt_secret: "` + validJWTSecret + `"
 }
 
 func TestLoad_ApplyEnvOverrides_InvalidSessionTimeout(t *testing.T) {
-	t.Cleanup(func() { os.Unsetenv("KUI_SESSION_TIMEOUT") })
+	t.Cleanup(func() { _ = os.Unsetenv("KUI_SESSION_TIMEOUT") })
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
-	os.Setenv("KUI_SESSION_TIMEOUT", "invalid")
+	_ = os.Setenv("KUI_SESSION_TIMEOUT", "invalid")
 
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config.yaml")
@@ -534,8 +534,8 @@ jwt_secret: "` + validJWTSecret + `"
 
 func TestLoadWithArgs_EnvOverride(t *testing.T) {
 	t.Cleanup(func() {
-		os.Unsetenv("KUI_CONFIG")
-		os.Unsetenv("KUI_PREFIX")
+		_ = os.Unsetenv("KUI_CONFIG")
+		_ = os.Unsetenv("KUI_PREFIX")
 	})
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 
@@ -549,7 +549,7 @@ jwt_secret: "` + validJWTSecret + `"
 	if err := os.WriteFile(configPath, configContent, 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	os.Setenv("KUI_CONFIG", configPath)
+	_ = os.Setenv("KUI_CONFIG", configPath)
 
 	cfg, path, err := LoadWithArgs([]string{})
 	if err != nil {
@@ -565,8 +565,8 @@ jwt_secret: "` + validJWTSecret + `"
 
 func TestLoadWithArgs_ConfigWinsOverKUI_CONFIG(t *testing.T) {
 	t.Cleanup(func() {
-		os.Unsetenv("KUI_CONFIG")
-		os.Unsetenv("KUI_PREFIX")
+		_ = os.Unsetenv("KUI_CONFIG")
+		_ = os.Unsetenv("KUI_PREFIX")
 	})
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 
@@ -713,8 +713,8 @@ jwt_secret: "` + validJWTSecret + `"
 
 func TestLoadWithArgs_BootstrapResolvesConfigPathAndPaths(t *testing.T) {
 	t.Cleanup(func() {
-		os.Unsetenv("KUI_CONFIG")
-		os.Unsetenv("KUI_PREFIX")
+		_ = os.Unsetenv("KUI_CONFIG")
+		_ = os.Unsetenv("KUI_PREFIX")
 	})
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 
@@ -756,8 +756,8 @@ jwt_secret: "` + validJWTSecret + `"
 
 func TestLoadWithArgs_KUI_PREFIXNormalizesPaths(t *testing.T) {
 	t.Cleanup(func() {
-		os.Unsetenv("KUI_CONFIG")
-		os.Unsetenv("KUI_PREFIX")
+		_ = os.Unsetenv("KUI_CONFIG")
+		_ = os.Unsetenv("KUI_PREFIX")
 	})
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 
@@ -808,8 +808,8 @@ jwt_secret: "` + validJWTSecret + `"
 
 func TestLoadWithOptions_EnvOverridesNormalizedUnderBootstrapPrefix(t *testing.T) {
 	t.Cleanup(func() {
-		os.Unsetenv("KUI_DB_PATH")
-		os.Unsetenv("KUI_GIT_PATH")
+		_ = os.Unsetenv("KUI_DB_PATH")
+		_ = os.Unsetenv("KUI_GIT_PATH")
 	})
 	_ = os.Unsetenv("KUI_SECURE_COOKIES")
 

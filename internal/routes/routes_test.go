@@ -187,7 +187,7 @@ func TestHealth_Returns200(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -224,7 +224,7 @@ func TestSetupStatus_ConfigMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -276,7 +276,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -328,7 +328,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
 	_, err = database.SQL.Exec(
@@ -425,7 +425,7 @@ func TestSetupComplete_AndLogin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	mock := &mockConnector{
 		pools:    []libvirtconn.StoragePoolInfo{{Name: "default", UUID: "p1", Active: true}},
@@ -474,7 +474,7 @@ func TestLogin_RequiresConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -519,7 +519,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
 	_, err = database.SQL.Exec(
@@ -629,7 +629,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -671,7 +671,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	// No admin user — setup required (no_admin). validate-host must be allowed.
 
 	handler := NewRouter(RouterOptions{
@@ -729,7 +729,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	// Setup complete = config + db + admin. Only then is validate-host blocked.
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
@@ -805,7 +805,7 @@ cors:
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -833,7 +833,7 @@ func TestDiscoveryEndpoints_RequireAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -889,7 +889,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
 	_, err = database.SQL.Exec(
@@ -970,7 +970,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
 	_, _ = database.SQL.Exec(
 		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -1020,7 +1020,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
 	_, _ = database.SQL.Exec(
 		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -1070,7 +1070,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
 	_, _ = database.SQL.Exec(
 		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -1120,7 +1120,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
 	_, _ = database.SQL.Exec(
 		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -3231,7 +3231,7 @@ func TestValidateHost_InvalidURIDuringSetup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -3274,7 +3274,7 @@ func TestValidateHost_BadJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -3302,7 +3302,7 @@ func TestValidateHost_EmptyURI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -3332,7 +3332,7 @@ func TestValidateHost_QemuSSHNoKeyfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -3375,7 +3375,7 @@ func TestValidateHost_NoPools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	mock := &mockConnector{
 		pools:    nil,
@@ -3424,7 +3424,7 @@ func TestValidateHost_NoNetworks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	mock := &mockConnector{
 		pools:    []libvirtconn.StoragePoolInfo{{Name: "default", UUID: "p1", Active: true}},
@@ -3473,7 +3473,7 @@ func TestValidateHost_KVMUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	mock := &mockConnector{
 		pools:    []libvirtconn.StoragePoolInfo{{Name: "default", UUID: "p1", Active: true}},
@@ -3523,7 +3523,7 @@ func TestValidateHost_RemoteURISkipsKVMCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	mock := &mockConnector{
 		pools:    []libvirtconn.StoragePoolInfo{{Name: "default", UUID: "p1", Active: true}},
@@ -3575,7 +3575,7 @@ func TestProvisionHostSetup_RejectsRemoteURI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -3619,7 +3619,7 @@ func TestProvisionHostSetup_DryRunReturnsAudit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	mock := &mockConnector{
 		pools:    nil,
@@ -3677,13 +3677,13 @@ func TestProvisionHostSetup_DryRunReturnsAudit(t *testing.T) {
 func TestProvisionHostSetup_ExecuteCreatesPoolAndNetwork(t *testing.T) {
 	tempDir := t.TempDir()
 	poolPath := filepath.Join(tempDir, "images")
-	os.Setenv("KUI_TEST_PROVISION_POOL_PATH", poolPath)
-	defer os.Unsetenv("KUI_TEST_PROVISION_POOL_PATH")
+	_ = os.Setenv("KUI_TEST_PROVISION_POOL_PATH", poolPath)
+	defer func() { _ = os.Unsetenv("KUI_TEST_PROVISION_POOL_PATH") }()
 	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	mock := &mockConnector{
 		pools:              nil,
@@ -3734,13 +3734,13 @@ func TestProvisionHostSetup_ExecuteCreatesPoolAndNetwork(t *testing.T) {
 func TestProvisionHostSetup_PartialFailure(t *testing.T) {
 	tempDir := t.TempDir()
 	poolPath := filepath.Join(tempDir, "images")
-	os.Setenv("KUI_TEST_PROVISION_POOL_PATH", poolPath)
-	defer os.Unsetenv("KUI_TEST_PROVISION_POOL_PATH")
+	_ = os.Setenv("KUI_TEST_PROVISION_POOL_PATH", poolPath)
+	defer func() { _ = os.Unsetenv("KUI_TEST_PROVISION_POOL_PATH") }()
 	database, err := db.Open(filepath.Join(tempDir, "kui.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	mock := &mockConnector{
 		pools:              nil,
@@ -3814,7 +3814,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
 	_, _ = database.SQL.Exec(
 		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -3867,7 +3867,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -3911,7 +3911,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
 	_, _ = database.SQL.Exec(
 		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -3976,7 +3976,7 @@ jwt_secret: "` + testJWTSecret + `"
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 	hash, _ := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
 	_, _ = database.SQL.Exec(
 		`INSERT INTO users (id, username, password_hash, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -4060,7 +4060,7 @@ func TestSetupComplete_BadPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	handler := NewRouter(RouterOptions{
 		Logger:        nil,
@@ -4086,7 +4086,7 @@ func TestSetupComplete_BadPayload(t *testing.T) {
 		{"invalid hosts empty id", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "", "uri": "qemu:///system", "keyfile": ""}}, "default_host": "a"}, 400, "host id is required"},
 		{"invalid hosts empty uri", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "a", "uri": "", "keyfile": ""}}, "default_host": "a"}, 400, "host uri is required"},
 		{"duplicate host id", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "local", "uri": "qemu:///system", "keyfile": ""}, {"id": "local", "uri": "qemu:///session", "keyfile": ""}}, "default_host": "local"}, 400, "duplicate host id: local"},
-		{"qemu+ssh no keyfile", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "remote", "uri": "qemu+ssh://host/system", "keyfile": ""}}, "default_host": "remote"}, 400, "Host remote: keyfile required for qemu+ssh URI"},
+		{"qemu+ssh no keyfile", map[string]any{"admin": map[string]string{"username": "a", "password": "x"}, "hosts": []map[string]string{{"id": "remote", "uri": "qemu+ssh://host/system", "keyfile": ""}}, "default_host": "remote"}, 400, "host remote: keyfile required for qemu+ssh URI"},
 		{"bad json", nil, 400, ""},
 	}
 	for _, tt := range tests {
@@ -4118,7 +4118,7 @@ func TestSetupComplete_RejectsHostWithNoPools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	mock := &mockConnector{
 		pools:    nil,
@@ -4160,7 +4160,7 @@ func TestSetupComplete_RejectsHostWithNoNetworks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	mock := &mockConnector{
 		pools:    []libvirtconn.StoragePoolInfo{{Name: "default", UUID: "p1", Active: true}},
@@ -4220,7 +4220,7 @@ git:
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	// No admin user — setup_required (no_admin). setupComplete must succeed.
 	mock := &mockConnector{
@@ -4279,7 +4279,7 @@ git:
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	hash, _ := bcrypt.GenerateFromPassword([]byte("x"), bcrypt.DefaultCost)
 	_, err = database.SQL.Exec(

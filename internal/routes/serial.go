@@ -58,7 +58,7 @@ func (r *routerState) serialProxy() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		state, err := conn.GetState(req.Context(), libvirtUUID)
 		if err != nil {
@@ -78,14 +78,14 @@ func (r *routerState) serialProxy() http.HandlerFunc {
 			writeJSONError(w, http.StatusBadGateway, "serial console unavailable")
 			return
 		}
-		defer serialStream.Close()
+		defer func() { _ = serialStream.Close() }()
 
 		wsConn, err := upgrader.Upgrade(w, req, nil)
 		if err != nil {
 			r.logger.Error("WebSocket upgrade failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
 			return
 		}
-		defer wsConn.Close()
+		defer func() { _ = wsConn.Close() }()
 
 		r.proxySerial(req.Context(), wsConn, serialStream, hostID, libvirtUUID)
 	}
@@ -111,7 +111,7 @@ func (r *routerState) proxySerial(ctx context.Context, ws *websocket.Conn, seria
 }
 
 func proxyWSToSerial(logger *slog.Logger, ws *websocket.Conn, serial io.WriteCloser, hostID, libvirtUUID string) {
-	defer serial.Close()
+	defer func() { _ = serial.Close() }()
 	for {
 		_, data, err := ws.ReadMessage()
 		if err != nil {
@@ -131,7 +131,7 @@ func proxyWSToSerial(logger *slog.Logger, ws *websocket.Conn, serial io.WriteClo
 }
 
 func proxySerialToWS(logger *slog.Logger, ws *websocket.Conn, serial io.ReadCloser, hostID, libvirtUUID string) {
-	defer serial.Close()
+	defer func() { _ = serial.Close() }()
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := serial.Read(buf)

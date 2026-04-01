@@ -389,7 +389,7 @@ func staticHandler(f http.FileSystem) http.HandlerFunc {
 			http.NotFound(w, r)
 			return
 		}
-		defer index.Close()
+		defer func() { _ = index.Close() }()
 		stat, _ := index.Stat()
 		http.ServeContent(w, r, "index.html", stat.ModTime(), index)
 	}
@@ -790,7 +790,7 @@ func (r *routerState) getVMs() http.HandlerFunc {
 			}
 			hosts[h.ID] = "online"
 			domains, err := conn.ListDomains(req.Context())
-			conn.Close()
+			_ = conn.Close()
 			if err != nil {
 				r.logger.Error("list domains failed", "host_id", h.ID, "error", err)
 				hosts[h.ID] = "offline"
@@ -882,7 +882,7 @@ func (r *routerState) getVMDetail() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		domainInfo, err := conn.LookupByUUID(req.Context(), libvirtUUID)
 		if err != nil {
 			r.logger.Error("lookup domain failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
@@ -957,7 +957,7 @@ func (r *routerState) patchVMConfig() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		domainEdits := payload.CPU > 0 || payload.RAMMB > 0 || strings.TrimSpace(payload.Network) != ""
 		if domainEdits {
 			state, err := conn.GetState(req.Context(), libvirtUUID)
@@ -1163,7 +1163,7 @@ func (r *routerState) getDomainXML() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		domainXML, err := conn.GetDomainXML(req.Context(), libvirtUUID)
 		if err != nil {
 			r.logger.Error("get domain XML failed", "error", err)
@@ -1203,7 +1203,7 @@ func (r *routerState) putDomainXML() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		state, err := conn.GetState(req.Context(), libvirtUUID)
 		if err != nil {
 			writeJSONError(w, http.StatusNotFound, "VM not found")
@@ -1381,7 +1381,7 @@ func (r *routerState) vmLifecycleOp(op string, fn func(conn libvirtconn.Connecto
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		fromState, _ := conn.GetState(req.Context(), libvirtUUID)
 		if err := fn(conn, req.Context(), libvirtUUID); err != nil {
 			r.logger.Error(op+" failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
@@ -1456,7 +1456,7 @@ func (r *routerState) vmRecover() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		fromState, _ := conn.GetState(req.Context(), libvirtUUID)
 		_ = conn.Destroy(req.Context(), libvirtUUID)
 		if err := conn.Undefine(req.Context(), libvirtUUID); err != nil {
@@ -1512,7 +1512,7 @@ func (r *routerState) vmStop() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		fromState, _ := conn.GetState(req.Context(), libvirtUUID)
 		timeout := 30 * time.Second
 		if r.config != nil && r.config.VMLifecycle.GracefulStopTimeout > 0 {
@@ -1595,7 +1595,7 @@ func (r *routerState) vmClaim() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		domainInfo, err := conn.LookupByUUID(req.Context(), libvirtUUID)
 		if err != nil {
 			writeJSONError(w, http.StatusNotFound, "VM not found")
@@ -1719,7 +1719,7 @@ func (r *routerState) orphansBulkClaim() http.HandlerFunc {
 				continue
 			}
 			domainInfo, err := conn.LookupByUUID(req.Context(), libvirtUUID)
-			conn.Close()
+			_ = conn.Close()
 			if err != nil {
 				conflicts = append(conflicts, orphansBulkClaimConflictItem{
 					HostID:      hostID,
@@ -1852,7 +1852,7 @@ func (r *routerState) orphansBulkDestroy() http.HandlerFunc {
 			}
 			domainInfo, err := conn.LookupByUUID(req.Context(), libvirtUUID)
 			if err != nil {
-				conn.Close()
+				_ = conn.Close()
 				failed = append(failed, orphansBulkDestroyFailedItem{
 					HostID:      hostID,
 					LibvirtUUID: libvirtUUID,
@@ -1863,7 +1863,7 @@ func (r *routerState) orphansBulkDestroy() http.HandlerFunc {
 			fromState := string(domainInfo.State)
 			_ = conn.Destroy(req.Context(), libvirtUUID)
 			if err := conn.Undefine(req.Context(), libvirtUUID); err != nil {
-				conn.Close()
+				_ = conn.Close()
 				r.logger.Error("bulk destroy undefine failed", "host_id", hostID, "libvirt_uuid", libvirtUUID, "error", err)
 				failed = append(failed, orphansBulkDestroyFailedItem{
 					HostID:      hostID,
@@ -1872,7 +1872,7 @@ func (r *routerState) orphansBulkDestroy() http.HandlerFunc {
 				})
 				continue
 			}
-			conn.Close()
+			_ = conn.Close()
 			destroyed = append(destroyed, orphansBulkDestroyDestroyedItem{
 				HostID:      hostID,
 				LibvirtUUID: libvirtUUID,
@@ -1975,7 +1975,7 @@ func (r *routerState) createVM() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		if err := conn.ValidatePool(req.Context(), pool); err != nil {
 			r.logger.Error("validate pool failed", "host_id", hostID, "pool", pool, "error", err)
 			writeJSONError(w, http.StatusBadRequest, "pool invalid or inactive")
@@ -2136,7 +2136,7 @@ func (r *routerState) getTemplates() http.HandlerFunc {
 			if errConn != nil {
 				conn = nil
 			} else {
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 			}
 		}
 		out := make([]templateListItem, 0, len(list))
@@ -2255,7 +2255,7 @@ func (r *routerState) createTemplate() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		state, err := conn.GetState(req.Context(), sourceUUID)
 		if err != nil {
 			writeJSONError(w, http.StatusNotFound, "source VM not found")
@@ -2524,7 +2524,7 @@ func (r *routerState) createVMFromTemplate() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		network := strings.TrimSpace(meta.Network)
 		if network == "" {
 			var dom libvirtxml.Domain
@@ -2837,7 +2837,7 @@ func (r *routerState) vmClone() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer sourceConn.Close()
+		defer func() { _ = sourceConn.Close() }()
 		state, err := sourceConn.GetState(req.Context(), sourceUUID)
 		if err != nil {
 			writeJSONError(w, http.StatusNotFound, "source VM not found")
@@ -2894,7 +2894,7 @@ func (r *routerState) vmClone() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "target host not found")
 			return
 		}
-		defer targetConn.Close()
+		defer func() { _ = targetConn.Close() }()
 		if err := targetConn.ValidatePool(req.Context(), targetPool); err != nil {
 			writeJSONError(w, http.StatusBadRequest, "target pool invalid or inactive")
 			return
@@ -3057,7 +3057,7 @@ func (r *routerState) getHostPools() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		pools, err := conn.ListPools(req.Context())
 		if err != nil {
 			r.logger.Error("list pools failed", "host_id", hostID, "error", err)
@@ -3098,7 +3098,7 @@ func (r *routerState) getHostPoolVolumes() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		volumes, err := conn.ListVolumes(req.Context(), poolName)
 		if err != nil {
 			r.logger.Error("list volumes failed", "host_id", hostID, "pool", poolName, "error", err)
@@ -3134,7 +3134,7 @@ func (r *routerState) getHostNetworks() http.HandlerFunc {
 			writeJSONError(w, http.StatusNotFound, "host not found")
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		networks, err := conn.ListNetworks(req.Context())
 		if err != nil {
 			r.logger.Error("list networks failed", "host_id", hostID, "error", err)
@@ -3236,7 +3236,7 @@ func (r *routerState) validateHost() http.HandlerFunc {
 			})
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		if isLocalLibvirtURI(payload.URI) {
 			check := r.kvmCheckFunc
@@ -3348,7 +3348,7 @@ func (r *routerState) provisionHostSetup() http.HandlerFunc {
 			writeJSONError(w, http.StatusInternalServerError, sanitizeValidationError(err.Error()))
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		pools, err := conn.ListPools(req.Context())
 		if err != nil {
@@ -3484,7 +3484,7 @@ func (r *routerState) provisionHost() http.HandlerFunc {
 			writeJSONError(w, http.StatusInternalServerError, sanitizeValidationError(err.Error()))
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		pools, err := conn.ListPools(req.Context())
 		if err != nil {
@@ -3637,17 +3637,17 @@ func (r *routerState) setupComplete() http.HandlerFunc {
 			}
 			pools, err := conn.ListPools(req.Context())
 			if err != nil {
-				conn.Close()
+				_ = conn.Close()
 				validationFailures = append(validationFailures, fmt.Sprintf("Host %s: %s", h.ID, sanitizeValidationError(err.Error())))
 				continue
 			}
 			networks, err := conn.ListNetworks(req.Context())
 			if err != nil {
-				conn.Close()
+				_ = conn.Close()
 				validationFailures = append(validationFailures, fmt.Sprintf("Host %s: %s", h.ID, sanitizeValidationError(err.Error())))
 				continue
 			}
-			conn.Close()
+			_ = conn.Close()
 			if len(pools) == 0 {
 				validationFailures = append(validationFailures, fmt.Sprintf("Host %s has no storage pools", h.ID))
 			}
@@ -3860,7 +3860,7 @@ func normalizeHosts(in []struct {
 			return nil, fmt.Errorf("duplicate host id: %s", id)
 		}
 		if strings.HasPrefix(uri, "qemu+ssh://") && keyfile == "" {
-			return nil, fmt.Errorf("Host %s: keyfile required for qemu+ssh URI", id)
+			return nil, fmt.Errorf("host %s: keyfile required for qemu+ssh URI", id)
 		}
 		seen[id] = struct{}{}
 

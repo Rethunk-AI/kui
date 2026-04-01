@@ -80,7 +80,7 @@ func ParseSubnetToGateway(subnet string) (gateway string, prefix uint) {
 	}
 	parts := strings.SplitN(subnet, "/", 2)
 	if len(parts) == 2 {
-		fmt.Sscanf(parts[1], "%d", &prefix)
+		_, _ = fmt.Sscanf(parts[1], "%d", &prefix)
 	}
 	var a, b, c int
 	if n, _ := fmt.Sscanf(parts[0], "%d.%d.%d.%d", &a, &b, &c, new(int)); n >= 4 {

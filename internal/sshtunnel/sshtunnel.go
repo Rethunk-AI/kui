@@ -87,13 +87,13 @@ func DialRemote(ctx context.Context, cfg *SSHConfig, network, addr string) (net.
 	}
 	sshConn, chans, reqs, err := ssh.NewClientConn(conn, sshAddr, sshConfig)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("ssh handshake: %w", err)
 	}
 	client := ssh.NewClient(sshConn, chans, reqs)
 	remoteConn, err := client.Dial(network, addr)
 	if err != nil {
-		client.Close()
+		_ = client.Close()
 		return nil, fmt.Errorf("dial %s on remote: %w", addr, err)
 	}
 	return &sshTunnelConn{Conn: remoteConn, client: client}, nil

@@ -113,7 +113,7 @@ func (d *DB) ListVMMetadata(ctx context.Context) ([]VMMetadataRow, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list vm_metadata: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []VMMetadataRow
 	for rows.Next() {

@@ -128,7 +128,7 @@ func (m *Monitor) pollHost(ctx context.Context, h config.Host) {
 		}
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	m.mu.Lock()
 	wasOnline := m.hostState[h.ID]

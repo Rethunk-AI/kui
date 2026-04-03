@@ -11,7 +11,7 @@ require github.com/go-chi/chi/v5 v5.2.5
 require github.com/golang-jwt/jwt/v5 v5.3.1
 
 require (
-	github.com/go-git/go-git/v5 v5.17.1
+	github.com/go-git/go-git/v5 v5.17.2
 	github.com/gorilla/websocket v1.5.3
 	golang.org/x/crypto v0.49.0
 	libvirt.org/go/libvirt v1.12001.0

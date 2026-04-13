@@ -28,7 +28,7 @@ type Monitor struct {
 	connectorProvider ConnectorProvider
 	pollInterval      time.Duration
 	mu                sync.Mutex
-	hostState         map[string]bool // hostID -> was online last poll
+	hostState         map[string]bool                             // hostID -> was online last poll
 	domainState       map[string]libvirtconn.DomainLifecycleState // "hostID:uuid" -> state
 }
 
@@ -167,8 +167,8 @@ func (m *Monitor) pollHost(ctx context.Context, h config.Host) {
 				Type: "vm.state_changed",
 				Data: map[string]string{
 					"host_id": h.ID,
-					"vm_id":  d.UUID,
-					"state":  stateStr,
+					"vm_id":   d.UUID,
+					"state":   stateStr,
 				},
 			})
 			m.logger.Debug("vm state changed", "host_id", h.ID, "vm_id", d.UUID, "state", stateStr)

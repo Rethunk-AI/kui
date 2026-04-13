@@ -35,4 +35,3 @@ func requestIDFromContext(r *http.Request) string {
 	requestID, _ := value.(string)
 	return requestID
 }
-

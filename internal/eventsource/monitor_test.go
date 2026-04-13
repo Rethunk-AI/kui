@@ -41,7 +41,7 @@ func (m *mockConnector) Shutdown(ctx context.Context, uuid string) error { retur
 func (m *mockConnector) Destroy(ctx context.Context, uuid string) error  { return nil }
 func (m *mockConnector) Undefine(ctx context.Context, uuid string) error { return nil }
 func (m *mockConnector) Suspend(ctx context.Context, uuid string) error  { return nil }
-func (m *mockConnector) Resume(ctx context.Context, uuid string) error  { return nil }
+func (m *mockConnector) Resume(ctx context.Context, uuid string) error   { return nil }
 func (m *mockConnector) GetState(ctx context.Context, uuid string) (libvirtconn.DomainLifecycleState, error) {
 	return "", errors.New("not implemented")
 }
@@ -54,8 +54,8 @@ func (m *mockConnector) ListPools(ctx context.Context) ([]libvirtconn.StoragePoo
 func (m *mockConnector) ListVolumes(ctx context.Context, pool string) ([]libvirtconn.StorageVolumeInfo, error) {
 	return nil, errors.New("not implemented")
 }
-func (m *mockConnector) ValidatePool(ctx context.Context, pool string) error   { return nil }
-func (m *mockConnector) ValidatePath(ctx context.Context, pool, path string) error { return nil }
+func (m *mockConnector) ValidatePool(ctx context.Context, pool string) error         { return nil }
+func (m *mockConnector) ValidatePath(ctx context.Context, pool, path string) error   { return nil }
 func (m *mockConnector) ValidateVolume(ctx context.Context, pool, name string) error { return nil }
 func (m *mockConnector) CreateVolumeFromXML(ctx context.Context, pool, xml string) (libvirtconn.StorageVolumeInfo, error) {
 	return libvirtconn.StorageVolumeInfo{}, errors.New("not implemented")

@@ -25,31 +25,31 @@ const testJWTSecret = "0123456789abcdef0123456789abcdef"
 
 // mockConnector implements libvirtconn.Connector for handler tests.
 type mockConnector struct {
-	listDomainsErr   error
-	domains          []libvirtconn.DomainInfo
-	lookupErr        error
-	domainInfo       libvirtconn.DomainInfo
-	listPoolsErr     error
-	pools            []libvirtconn.StoragePoolInfo
-	listVolumesErr   error
-	volumes          []libvirtconn.StorageVolumeInfo
-	listNetworksErr  error
-	networks         []libvirtconn.NetworkInfo
-	getStateErr      error
-	state            libvirtconn.DomainLifecycleState
-	getDomainXMLErr  error
-	domainXML        string
-	validatePoolErr  error
-	validateVolErr   error
-	createVolErr     error
-	volInfo          libvirtconn.StorageVolumeInfo
-	defineXMLErr     error
-	createErr        error
-	shutdownErr      error
-	destroyErr       error
-	undefineErr      error
-	suspendErr       error
-	resumeErr        error
+	listDomainsErr    error
+	domains           []libvirtconn.DomainInfo
+	lookupErr         error
+	domainInfo        libvirtconn.DomainInfo
+	listPoolsErr      error
+	pools             []libvirtconn.StoragePoolInfo
+	listVolumesErr    error
+	volumes           []libvirtconn.StorageVolumeInfo
+	listNetworksErr   error
+	networks          []libvirtconn.NetworkInfo
+	getStateErr       error
+	state             libvirtconn.DomainLifecycleState
+	getDomainXMLErr   error
+	domainXML         string
+	validatePoolErr   error
+	validateVolErr    error
+	createVolErr      error
+	volInfo           libvirtconn.StorageVolumeInfo
+	defineXMLErr      error
+	createErr         error
+	shutdownErr       error
+	destroyErr        error
+	undefineErr       error
+	suspendErr        error
+	resumeErr         error
 	cloneVolErr       error
 	copyVolErr        error
 	createVolBytesErr error
@@ -105,10 +105,10 @@ func (m *mockConnector) DefineXML(ctx context.Context, xmlConfig string) (libvir
 
 func (m *mockConnector) Create(ctx context.Context, uuid string) error   { return m.createErr }
 func (m *mockConnector) Shutdown(ctx context.Context, uuid string) error { return m.shutdownErr }
-func (m *mockConnector) Destroy(ctx context.Context, uuid string) error { return m.destroyErr }
+func (m *mockConnector) Destroy(ctx context.Context, uuid string) error  { return m.destroyErr }
 func (m *mockConnector) Undefine(ctx context.Context, uuid string) error { return m.undefineErr }
-func (m *mockConnector) Suspend(ctx context.Context, uuid string) error { return m.suspendErr }
-func (m *mockConnector) Resume(ctx context.Context, uuid string) error  { return m.resumeErr }
+func (m *mockConnector) Suspend(ctx context.Context, uuid string) error  { return m.suspendErr }
+func (m *mockConnector) Resume(ctx context.Context, uuid string) error   { return m.resumeErr }
 
 func (m *mockConnector) GetState(ctx context.Context, uuid string) (libvirtconn.DomainLifecycleState, error) {
 	if m.getStateErr != nil {
@@ -138,7 +138,9 @@ func (m *mockConnector) ListVolumes(ctx context.Context, pool string) ([]libvirt
 	return m.volumes, nil
 }
 
-func (m *mockConnector) ValidatePool(ctx context.Context, pool string) error   { return m.validatePoolErr }
+func (m *mockConnector) ValidatePool(ctx context.Context, pool string) error {
+	return m.validatePoolErr
+}
 func (m *mockConnector) ValidatePath(ctx context.Context, pool, path string) error { return nil }
 func (m *mockConnector) ValidateVolume(ctx context.Context, pool, name string) error {
 	return m.validateVolErr
@@ -443,8 +445,8 @@ func TestSetupComplete_AndLogin(t *testing.T) {
 	})
 
 	payload := map[string]any{
-		"admin": map[string]string{"username": "admin", "password": "secret123"},
-		"hosts": []map[string]string{{"id": "local", "uri": "qemu:///system", "keyfile": ""}},
+		"admin":        map[string]string{"username": "admin", "password": "secret123"},
+		"hosts":        []map[string]string{{"id": "local", "uri": "qemu:///system", "keyfile": ""}},
 		"default_host": "local",
 	}
 	bodyBytes, _ := json.Marshal(payload)
@@ -1153,8 +1155,8 @@ jwt_secret: "` + testJWTSecret + `"
 func TestVNCPortFromDomainXML(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name    string
-		xml     string
+		name     string
+		xml      string
 		wantPort int
 	}{
 		{"no devices", `<domain><name>vm</name></domain>`, 0},
@@ -1655,13 +1657,13 @@ jwt_secret: "` + testJWTSecret + `"
 	_ = database.InsertVMMetadata(context.Background(), "local", "uuid-claimed", true, &disp)
 
 	handler := NewRouter(RouterOptions{
-		Logger:            nil,
-		DB:                database,
-		Config:            loaded,
-		ConfigPath:        configPath,
-		ConfigPresent:     true,
-		DBPath:            filepath.Join(tempDir, "kui.db"),
-		GitPath:           tempDir,
+		Logger:        nil,
+		DB:            database,
+		Config:        loaded,
+		ConfigPath:    configPath,
+		ConfigPresent: true,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
 		ConnectorProvider: func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
 			return nil, errors.New("host not found")
 		},
@@ -1754,7 +1756,7 @@ func TestPutPreferences_Success(t *testing.T) {
 	payload := map[string]any{
 		"default_host_id": "local",
 		"list_view_options": map[string]any{
-			"list_view": map[string]any{"sort": "name", "page_size": 25, "group_by": "last_access"},
+			"list_view":            map[string]any{"sort": "name", "page_size": 25, "group_by": "last_access"},
 			"onboarding_dismissed": true,
 		},
 	}
@@ -2318,7 +2320,7 @@ func TestPutDomainXML_ListNetworksError(t *testing.T) {
 		domainInfo:      libvirtconn.DomainInfo{Name: "vm1", UUID: "uuid-vm", State: libvirtconn.DomainStateShutoff},
 		state:           libvirtconn.DomainStateShutoff,
 		domainXML:       domainXML,
-		listNetworksErr:  errors.New("list networks failed"),
+		listNetworksErr: errors.New("list networks failed"),
 	}
 	handler, token := authHandlerWithClaimedVMWithConnector(t, mock)
 	req := httptest.NewRequest(http.MethodPut, "/api/hosts/local/vms/uuid-vm/domain-xml", strings.NewReader(domainXML))
@@ -2549,7 +2551,7 @@ func TestOrphansBulkClaim_Success(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	var resp struct {
-		Claimed   []struct {
+		Claimed []struct {
 			HostID      string `json:"host_id"`
 			LibvirtUUID string `json:"libvirt_uuid"`
 			DisplayName string `json:"display_name"`
@@ -2607,7 +2609,7 @@ func TestOrphansBulkClaim_AlreadyClaimed(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	var resp struct {
-		Claimed   []struct{} `json:"claimed"`
+		Claimed   []struct{}                `json:"claimed"`
 		Conflicts []struct{ Reason string } `json:"conflicts"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
@@ -2804,9 +2806,9 @@ vm_defaults:
 	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
 
 	payload := map[string]any{
-		"host_id": "local",
-		"pool":    "default",
-		"disk":    map[string]any{"size_mb": 10240},
+		"host_id":      "local",
+		"pool":         "default",
+		"disk":         map[string]any{"size_mb": 10240},
 		"display_name": "New VM",
 	}
 	bodyBytes, _ := json.Marshal(payload)
@@ -2964,9 +2966,9 @@ func TestCreateVM_MissingPool(t *testing.T) {
 func TestCreateVM_InvalidNetwork(t *testing.T) {
 	t.Parallel()
 	mock := &mockConnector{
-		pools:    []libvirtconn.StoragePoolInfo{{Name: "default", UUID: "p1", Active: true}},
-		networks: []libvirtconn.NetworkInfo{{Name: "bridge0", UUID: "n1", Active: true}},
-		volInfo:  libvirtconn.StorageVolumeInfo{Name: "kui-abc12345.qcow2", Path: "/var/lib/libvirt/images/kui-abc12345.qcow2"},
+		pools:      []libvirtconn.StoragePoolInfo{{Name: "default", UUID: "p1", Active: true}},
+		networks:   []libvirtconn.NetworkInfo{{Name: "bridge0", UUID: "n1", Active: true}},
+		volInfo:    libvirtconn.StorageVolumeInfo{Name: "kui-abc12345.qcow2", Path: "/var/lib/libvirt/images/kui-abc12345.qcow2"},
 		domainInfo: libvirtconn.DomainInfo{Name: "kui-abc12345", UUID: "new-uuid-here", State: libvirtconn.DomainStateShutoff},
 	}
 	handler, token := authHandler(t, func(ctx context.Context, hostID string) (libvirtconn.Connector, error) { return mock, nil })
@@ -3589,7 +3591,7 @@ func TestProvisionHostSetup_RejectsRemoteURI(t *testing.T) {
 
 	payload := map[string]any{
 		"host_id": "remote",
-		"uri":    "qemu+ssh://user@host/system",
+		"uri":     "qemu+ssh://user@host/system",
 		"keyfile": "/path/to/key",
 		"dry_run": true,
 	}
@@ -3638,7 +3640,7 @@ func TestProvisionHostSetup_DryRunReturnsAudit(t *testing.T) {
 
 	payload := map[string]any{
 		"host_id": "local",
-		"uri":    "qemu:///system",
+		"uri":     "qemu:///system",
 		"keyfile": "",
 		"dry_run": true,
 	}
@@ -3651,8 +3653,8 @@ func TestProvisionHostSetup_DryRunReturnsAudit(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		Audit     *struct {
-			Pool    *struct{ Path, Type, Name string } `json:"pool"`
+		Audit *struct {
+			Pool    *struct{ Path, Type, Name string }   `json:"pool"`
 			Network *struct{ Name, Subnet, Type string } `json:"network"`
 		} `json:"audit"`
 		LocalOnly bool `json:"local_only"`
@@ -3686,10 +3688,10 @@ func TestProvisionHostSetup_ExecuteCreatesPoolAndNetwork(t *testing.T) {
 	defer func() { _ = database.Close() }()
 
 	mock := &mockConnector{
-		pools:              nil,
-		networks:           nil,
-		createPoolInfo:     libvirtconn.StoragePoolInfo{Name: "default", UUID: "p1", Active: true},
-		createNetworkInfo:  libvirtconn.NetworkInfo{Name: "default", UUID: "n1", Active: true},
+		pools:             nil,
+		networks:          nil,
+		createPoolInfo:    libvirtconn.StoragePoolInfo{Name: "default", UUID: "p1", Active: true},
+		createNetworkInfo: libvirtconn.NetworkInfo{Name: "default", UUID: "n1", Active: true},
 	}
 	handler := NewRouter(RouterOptions{
 		Logger:           nil,
@@ -3704,7 +3706,7 @@ func TestProvisionHostSetup_ExecuteCreatesPoolAndNetwork(t *testing.T) {
 
 	payload := map[string]any{
 		"host_id": "local",
-		"uri":    "qemu:///system",
+		"uri":     "qemu:///system",
 		"keyfile": "",
 		"dry_run": false,
 	}
@@ -3717,8 +3719,12 @@ func TestProvisionHostSetup_ExecuteCreatesPoolAndNetwork(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		Pool    struct{ Created bool `json:"created"` } `json:"pool"`
-		Network struct{ Created bool `json:"created"` } `json:"network"`
+		Pool struct {
+			Created bool `json:"created"`
+		} `json:"pool"`
+		Network struct {
+			Created bool `json:"created"`
+		} `json:"network"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -3743,10 +3749,10 @@ func TestProvisionHostSetup_PartialFailure(t *testing.T) {
 	defer func() { _ = database.Close() }()
 
 	mock := &mockConnector{
-		pools:              nil,
-		networks:           nil,
-		createPoolInfo:     libvirtconn.StoragePoolInfo{Name: "default", UUID: "p1", Active: true},
-		createNetworkErr:   errors.New("network 'default' already exists"),
+		pools:            nil,
+		networks:         nil,
+		createPoolInfo:   libvirtconn.StoragePoolInfo{Name: "default", UUID: "p1", Active: true},
+		createNetworkErr: errors.New("network 'default' already exists"),
 	}
 	handler := NewRouter(RouterOptions{
 		Logger:           nil,
@@ -3761,7 +3767,7 @@ func TestProvisionHostSetup_PartialFailure(t *testing.T) {
 
 	payload := map[string]any{
 		"host_id": "local",
-		"uri":    "qemu:///system",
+		"uri":     "qemu:///system",
 		"keyfile": "",
 		"dry_run": false,
 	}
@@ -3774,7 +3780,9 @@ func TestProvisionHostSetup_PartialFailure(t *testing.T) {
 		t.Fatalf("expected 200 for partial failure, got %d: %s", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		Pool    struct{ Created bool `json:"created"` } `json:"pool"`
+		Pool struct {
+			Created bool `json:"created"`
+		} `json:"pool"`
 		Network struct {
 			Created bool   `json:"created"`
 			Error   string `json:"error"`
@@ -4234,7 +4242,7 @@ git:
 		ConfigPath:       configPath,
 		ConfigPresent:    true,
 		DBPath:           loaded.DB.Path,
-		GitPath:           loaded.Git.Path,
+		GitPath:          loaded.Git.Path,
 		SetupConnectFunc: func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) { return mock, nil },
 	})
 
@@ -4301,7 +4309,7 @@ git:
 		ConfigPath:       configPath,
 		ConfigPresent:    true,
 		DBPath:           loaded.DB.Path,
-		GitPath:           loaded.Git.Path,
+		GitPath:          loaded.Git.Path,
 		SetupConnectFunc: func(ctx context.Context, uri, keyfile string) (libvirtconn.Connector, error) { return mock, nil },
 	})
 
@@ -4555,13 +4563,13 @@ jwt_secret: "` + testJWTSecret + `"
 	_ = database.InsertVMMetadata(context.Background(), "local", "uuid-vm", true, nil)
 
 	handler2 := NewRouter(RouterOptions{
-		Logger:            nil,
-		DB:                database,
-		Config:            loaded,
-		ConfigPath:        configPath,
-		ConfigPresent:     true,
-		DBPath:            filepath.Join(tempDir, "kui.db"),
-		GitPath:           tempDir,
+		Logger:        nil,
+		DB:            database,
+		Config:        loaded,
+		ConfigPath:    configPath,
+		ConfigPresent: true,
+		DBPath:        filepath.Join(tempDir, "kui.db"),
+		GitPath:       tempDir,
 		ConnectorProvider: func(ctx context.Context, hostID string) (libvirtconn.Connector, error) {
 			return nil, errors.New("host not found")
 		},
@@ -4714,10 +4722,10 @@ jwt_secret: "` + testJWTSecret + `"
 	_ = json.NewDecoder(loginRec.Body).Decode(&loginResp)
 
 	payload := map[string]any{
-		"source_host_id":       "local",
-		"source_libvirt_uuid":   "uuid-src",
-		"name":                  "My Template",
-		"target_pool":           "default",
+		"source_host_id":      "local",
+		"source_libvirt_uuid": "uuid-src",
+		"name":                "My Template",
+		"target_pool":         "default",
 	}
 	bodyBytes, _ := json.Marshal(payload)
 	req := httptest.NewRequest(http.MethodPost, "/api/templates", bytes.NewReader(bodyBytes))

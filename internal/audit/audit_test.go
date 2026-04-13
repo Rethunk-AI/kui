@@ -104,7 +104,7 @@ func TestRecordEvent_NilDB(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	err := RecordEvent(ctx, nil, Event{
-		EventType: "auth",
+		EventType:  "auth",
 		EntityType: "auth",
 		EntityID:   "user-1",
 		Payload:    map[string]string{"action": "login"},

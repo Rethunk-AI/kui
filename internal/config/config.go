@@ -59,7 +59,7 @@ type Git struct {
 
 type Session struct {
 	Timeout       Duration `yaml:"timeout"`
-	SecureCookies *bool   `yaml:"secure_cookies"`
+	SecureCookies *bool    `yaml:"secure_cookies"`
 }
 
 type VMLifecycle struct {

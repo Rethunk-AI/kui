@@ -26,7 +26,7 @@ type authClaims struct {
 }
 
 type AuthOptions struct {
-	SkipExactPaths []string
+	SkipExactPaths  []string
 	SkipPrefixPaths []string
 }
 
@@ -126,4 +126,3 @@ func writeJSONError(w http.ResponseWriter, status int, message string) {
 	w.WriteHeader(status)
 	_, _ = w.Write(raw)
 }
-

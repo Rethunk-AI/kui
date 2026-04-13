@@ -1,0 +1,19 @@
+name: Build web dist (Go embed)
+description: Install web deps and run `make web` so `web/dist/*` exists for //go:embed.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: yarn
+        cache-dependency-path: web/yarn.lock
+
+    - name: Enable Corepack
+      shell: bash
+      run: corepack enable
+
+    - name: Build web
+      shell: bash
+      run: make web

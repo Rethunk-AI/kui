@@ -4,18 +4,18 @@ go 1.25.0
 
 require gopkg.in/yaml.v3 v3.0.1
 
-require github.com/mattn/go-sqlite3 v1.14.37
+require github.com/mattn/go-sqlite3 v1.14.42
 
 require github.com/go-chi/chi/v5 v5.2.5
 
 require github.com/golang-jwt/jwt/v5 v5.3.1
 
 require (
-	github.com/go-git/go-git/v5 v5.17.1
+	github.com/go-git/go-git/v5 v5.17.2
 	github.com/gorilla/websocket v1.5.3
-	golang.org/x/crypto v0.49.0
-	libvirt.org/go/libvirt v1.12001.0
-	libvirt.org/go/libvirtxml v1.12001.0
+	golang.org/x/crypto v0.50.0
+	libvirt.org/go/libvirt v1.12002.0
+	libvirt.org/go/libvirtxml v1.12002.0
 )
 
 require (
@@ -35,7 +35,7 @@ require (
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/skeema/knownhosts v1.3.2 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
-	golang.org/x/net v0.52.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )

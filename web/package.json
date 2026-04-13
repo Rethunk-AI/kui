@@ -20,16 +20,16 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
-    "@vitest/coverage-v8": "^4.1.2",
+    "@vitest/coverage-v8": "^4.1.4",
     "autoprefixer": "^10.4.27",
     "happy-dom": "^20.8.9",
     "pa11y": "^9.1.1",
-    "postcss": "^8.5.8",
-    "start-server-and-test": "^3.0.0",
+    "postcss": "^8.5.9",
+    "start-server-and-test": "^3.0.2",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
-    "vite": "^8.0.5",
-    "vitest": "^4.1.2"
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4"
   },
   "resolutions": {
     "axios": "^1.15.0",

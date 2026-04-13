@@ -9,7 +9,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "a11y": "pa11y http://localhost:4173/ --runner axe",
-    "a11y:ci": "start-server-and-test preview http-get://localhost:4173 a11y",
+    "a11y:gha": "pa11y http://localhost:4173/ --runner axe -c pa11y.ci.json",
+    "a11y:ci": "start-server-and-test preview http-get://localhost:4173 a11y:gha",
     "a11y:check": "yarn run build && yarn run a11y:ci"
   },
   "dependencies": {

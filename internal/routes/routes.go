@@ -1324,10 +1324,10 @@ func vmConfigChangeDiff(beforeMeta, afterMeta map[string]interface{}, beforeXML,
 	sb.WriteString("--- vm_metadata (before)\n")
 	sb.WriteString("+++ vm_metadata (after)\n")
 	sb.WriteString("@@ -1,2 +1,2 @@\n")
-	sb.WriteString(fmt.Sprintf("-display_name: %v\n", beforeMeta["display_name"]))
-	sb.WriteString(fmt.Sprintf("-console_preference: %v\n", beforeMeta["console_preference"]))
-	sb.WriteString(fmt.Sprintf("+display_name: %v\n", afterMeta["display_name"]))
-	sb.WriteString(fmt.Sprintf("+console_preference: %v\n", afterMeta["console_preference"]))
+	fmt.Fprintf(&sb, "-display_name: %v\n", beforeMeta["display_name"])
+	fmt.Fprintf(&sb, "-console_preference: %v\n", beforeMeta["console_preference"])
+	fmt.Fprintf(&sb, "+display_name: %v\n", afterMeta["display_name"])
+	fmt.Fprintf(&sb, "+console_preference: %v\n", afterMeta["console_preference"])
 	if domainChanged && beforeXML != "" && afterXML != "" {
 		sb.WriteString("\n--- domain.xml (before)\n")
 		sb.WriteString("+++ domain.xml (after)\n")
@@ -1340,7 +1340,7 @@ func unifiedDiffLines(before, after string) string {
 	beforeLines := strings.Split(before, "\n")
 	afterLines := strings.Split(after, "\n")
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("@@ -1,%d +1,%d @@\n", len(beforeLines), len(afterLines)))
+	fmt.Fprintf(&sb, "@@ -1,%d +1,%d @@\n", len(beforeLines), len(afterLines))
 	for _, l := range beforeLines {
 		sb.WriteString("-")
 		sb.WriteString(l)
@@ -2779,7 +2779,7 @@ func metaYAMLString(m *template.Meta) string {
 func templateDiffLines(before, after string) string {
 	afterLines := strings.Split(after, "\n")
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("@@ -0,0 +1,%d @@\n", len(afterLines)))
+	fmt.Fprintf(&sb, "@@ -0,0 +1,%d @@\n", len(afterLines))
 	for _, l := range afterLines {
 		sb.WriteString("+")
 		sb.WriteString(l)

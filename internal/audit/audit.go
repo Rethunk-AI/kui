@@ -186,9 +186,7 @@ func WizardDiff(afterContent string) string {
 	var sb strings.Builder
 	sb.WriteString("--- /dev/null\n")
 	sb.WriteString("+++ config.yaml\n")
-	sb.WriteString("@@ -0,0 +1,")
-	sb.WriteString(fmt.Sprintf("%d", len(lines)))
-	sb.WriteString(" @@\n")
+	fmt.Fprintf(&sb, "@@ -0,0 +1,%d @@\n", len(lines))
 	for _, line := range lines {
 		sb.WriteString("+")
 		sb.WriteString(line)

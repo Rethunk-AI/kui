@@ -40,7 +40,7 @@ Otherwise:
 | Codebase exploration, locate code, map architecture | Built-in: `explore` (do not create a custom agent for this) |
 | Shell command sequences, build, deploy | Built-in: `shell` |
 | DB entity patterns, RLS recipes, Supabase type conventions | Skill: `supabase-data-layer` |
-| Commit batching, conventional commit messages | Skill: `conventional-commits-and-batching` |
+| Commits, verify-before-push | User-global: `~/.cursor/skills/agent-deliver`, `git-commit-batches`, `git-push-order` |
 | Execute plan tasks sequentially, BLOCKED/MODIFIED notation | Skill: `sdd-todo-execution` |
 | Postgres performance, connection pooling, indexing | Skill: `supabase-postgres-best-practices` (supabase plugin) |
 

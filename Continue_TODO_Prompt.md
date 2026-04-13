@@ -162,7 +162,7 @@ If verification fails: do not mark the task complete; delegate a fix or escalate
 
 ### 4.4 Commit Batching
 
-Use the conventional-commits skill: `.cursor/skills/conventional-commits-and-batching/SKILL.md`.
+Use user-global git skills: `~/.cursor/skills/agent-deliver/SKILL.md` and `~/.cursor/skills/git-commit-batches/SKILL.md`.
 
 Rules:
 

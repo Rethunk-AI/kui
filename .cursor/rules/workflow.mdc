@@ -57,14 +57,9 @@ This repo is Go-only. Use the Go toolchain and Makefile:
 - **Verifier:** When developer reports `make all` passed, do not re-run full `make all`. Trust the developer's output; verifier focuses on plan compliance, spec coverage, and spot-checks (e.g. `go test ./changed/pkg/...` if needed). Re-run `make all` only when developer reported failure or did not run it.
 - **Router delegation:** When delegating developer → verifier, instruct developer to run `make all` once at completion. Instruct verifier to skip full `make all` when developer already passed.
 
-## Commit batching
+## Git (commits / push)
 
-When the user asks for commits, git history, or conventional commits:
-
-- Use the `conventional-commits-and-batching` skill.
-- Batch by theme (one reason per commit); prefer &lt;15 files per commit.
-- For Go code, prefer dependency order: schema/proto → internal packages → cmd.
-- Keep mechanical changes (formatting, renames) separate from functional ones.
+Follow user-global **`~/.cursor/skills/agent-deliver/SKILL.md`** and **`~/.cursor/skills/git-commit-batches/SKILL.md`** (**`user-rethunk-git`** **`batch_commit`**). Batch by theme; prefer &lt;15 files per commit; Go order: schema/proto → internal → cmd; split mechanical vs functional when feasible.
 
 ## Canonical configuration
 

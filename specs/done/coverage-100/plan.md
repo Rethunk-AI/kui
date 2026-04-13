@@ -414,7 +414,7 @@ One commit per package or logical group:
 | Exclude libvirt connector.go from coverage | Mock libvirt C bindings | Libvirt has no pure-Go mock; integration tests with test:///default are optional |
 | Mock fetch/WebSocket in web tests | MSW, or real backend | vi.stubGlobal is simple; no extra deps |
 | Exclude main() and fatalStartup | Test via subprocess | os.Exit is untestable in-process |
-| Batch commits by package | Single commit | Matches conventional-commits skill; easier review |
+| Batch commits by package | Single commit | Matches user-global **git-commit-batches**; easier review |
 
 ---
 

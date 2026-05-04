@@ -2,7 +2,7 @@
 # Manual changes might be lost - proceed with caution!
 
 __metadata:
-  version: 8
+  version: 9
   cacheKey: 10c0
 
 "@alloc/quick-lru@npm:^5.2.0":
@@ -1987,7 +1987,7 @@ __metadata:
     autoprefixer: "npm:^10.5.0"
     happy-dom: "npm:^20.9.0"
     pa11y: "npm:^9.1.1"
-    postcss: "npm:^8.5.13"
+    postcss: "npm:^8.5.14"
     start-server-and-test: "npm:^3.0.2"
     tailwindcss: "npm:^4.2.4"
     typescript: "npm:^6.0.3"

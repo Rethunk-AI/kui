@@ -14,7 +14,7 @@ require (
 	github.com/go-git/go-git/v5 v5.18.0
 	github.com/gorilla/websocket v1.5.3
 	golang.org/x/crypto v0.50.0
-	libvirt.org/go/libvirt v1.12002.0
+	libvirt.org/go/libvirt v1.12003.0
 	libvirt.org/go/libvirtxml v1.12002.0
 )
 

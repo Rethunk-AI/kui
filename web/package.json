@@ -20,17 +20,17 @@
     "winbox": "0.2.82"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.2.4",
-    "@vitest/coverage-v8": "^4.1.5",
+    "@tailwindcss/postcss": "^4.3.0",
+    "@vitest/coverage-v8": "^4.1.6",
     "autoprefixer": "^10.5.0",
     "happy-dom": "^20.9.0",
     "pa11y": "^9.1.1",
-    "postcss": "^8.5.14",
-    "start-server-and-test": "^3.0.2",
-    "tailwindcss": "^4.2.4",
+    "postcss": "^8.5.15",
+    "start-server-and-test": "^3.0.5",
+    "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.10",
-    "vitest": "^4.1.5"
+    "vite": "^8.0.13",
+    "vitest": "^4.1.6"
   },
   "resolutions": {
     "axios": "^1.15.0",
@@ -40,5 +40,5 @@
     "postcss": "^8.5.13",
     "vite": "^8.0.8"
   },
-  "packageManager": "yarn@4.14.1"
+  "packageManager": "yarn@4.15.0"
 }

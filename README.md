@@ -4,6 +4,14 @@ Web-based KVM User Interface for VM lifecycle, provisioning, and monitoring. Con
 
 **Features:** Admin & user guides, systemd deployment, TLS/reverse proxy support, runtime prefix mode, full test coverage.
 
+## Product preview
+
+![Kui web console](docs/readme/screenshot-home.png)
+
+*Kui web console.*
+
+See [HUMANS.md](HUMANS.md) for setup and run instructions.
+
 ## 🚀 Getting Started
 
 - **Setup & Installation:** See [HUMANS.md](HUMANS.md)

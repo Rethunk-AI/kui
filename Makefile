@@ -9,6 +9,7 @@ web:
 	cd web && corepack yarn install && corepack yarn run build
 
 web-a11y: web
+	cd web && ./node_modules/.bin/puppeteer browsers install chrome
 	cd web && corepack yarn run a11y:ci
 
 BUILD_TAGS ?= libvirt

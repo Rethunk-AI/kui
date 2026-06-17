@@ -1245,9 +1245,9 @@ __metadata:
   linkType: hard
 
 "electron-to-chromium@npm:^1.5.328":
-  version: 1.5.373
-  resolution: "electron-to-chromium@npm:1.5.373"
-  checksum: 10c0/0e262fb70734db256e92910b02f44c8ce8b774696741fc2e6363d9e89092435acab30e0ad65a5b95344c4ce02c6260332196a4cc12a5adc49b3582d8be52d60e
+  version: 1.5.375
+  resolution: "electron-to-chromium@npm:1.5.375"
+  checksum: 10c0/f8cd3d364779589acfffd75c0566b15112aa78421520712dfa88708185b71eaf0de24b76df1f2a70b80aea6b1ade2c8c0b08b17db57f85259ec74c70a8d4475c
   languageName: node
   linkType: hard
 
@@ -1637,8 +1637,8 @@ __metadata:
   linkType: hard
 
 "happy-dom@npm:^20.10.1":
-  version: 20.10.4
-  resolution: "happy-dom@npm:20.10.4"
+  version: 20.10.5
+  resolution: "happy-dom@npm:20.10.5"
   dependencies:
     "@types/node": "npm:>=20.0.0"
     "@types/whatwg-mimetype": "npm:^3.0.2"
@@ -1647,7 +1647,7 @@ __metadata:
     entities: "npm:^7.0.1"
     whatwg-mimetype: "npm:^3.0.0"
     ws: "npm:^8.21.0"
-  checksum: 10c0/cc45b7392e13f8da8069df0206381ad4b531086df2e5dc1b5bcb5e88c6c7df0262154925708e338fed3bb041907ad9bf77a24c437706bb3e9f7753bc1816d652
+  checksum: 10c0/7682dbaa2d53b924664e7fe5819441137cfd8d10fee4d5836523997e571c1f021696e95c1f579e5c5eccdb4788a0906b5d70202ae86bd51233d8c2e7ee0f8683
   languageName: node
   linkType: hard
 

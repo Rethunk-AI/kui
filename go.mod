@@ -14,7 +14,7 @@ require (
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/gorilla/websocket v1.5.3
 	golang.org/x/crypto v0.53.0
-	libvirt.org/go/libvirt v1.12003.0
+	libvirt.org/go/libvirt v1.12005.0
 	libvirt.org/go/libvirtxml v1.12002.0
 )
 
@@ -31,7 +31,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.6.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/onsi/gomega v1.42.1 // indirect
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/rogpeppe/go-internal v1.15.0 // indirect

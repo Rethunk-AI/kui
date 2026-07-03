@@ -15,7 +15,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	golang.org/x/crypto v0.53.0
 	libvirt.org/go/libvirt v1.12005.0
-	libvirt.org/go/libvirtxml v1.12002.0
+	libvirt.org/go/libvirtxml v1.12005.0
 )
 
 require (

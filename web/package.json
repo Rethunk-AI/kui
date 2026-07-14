@@ -15,7 +15,8 @@
     "lint": "node -e \"process.exit(0)\"",
     "format": "node -e \"process.exit(0)\"",
     "typecheck": "tsc -b --noEmit",
-    "ci": "yarn lint && yarn typecheck && yarn test && yarn build"
+    "ci": "yarn lint && yarn typecheck && yarn test && yarn build",
+    "ci:fast": "yarn typecheck && yarn test"
   },
   "dependencies": {
     "@novnc/novnc": "^1.7.0",
